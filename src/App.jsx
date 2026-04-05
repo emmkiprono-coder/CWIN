@@ -1900,56 +1900,277 @@ function CaregiverPortal({user,clients,caregivers,careNotes,setCareNotes,inciden
 // ═══════════════════════════════════════════════════════════════════════
 // FAMILY STANDALONE PORTAL
 // ═══════════════════════════════════════════════════════════════════════
-function FamilyStandalonePortal({user,clients,caregivers,careNotes,events,familyMsgs,setFamilyMsgs,incidents}){
+function FamilyStandalonePortal({user,clients,caregivers,careNotes,events,familyMsgs,setFamilyMsgs,incidents,schedules,expenses,vitals,invoices,assignments,notifications,notify}){
   const cl=clients.find(c=>c.id===user.clientId)||clients[0];
+  const [tab,setTab]=useState("home");
   const [msgText,setMsgText]=useState("");
+  const [calMonth,setCalMonth]=useState(now().getMonth());
+  const [calYear,setCalYear]=useState(now().getFullYear());
+
   const clNotes=careNotes.filter(n=>n.clientId===cl.id).sort((a,b)=>new Date(b.date)-new Date(a.date));
-  const clEvents=events.filter(e=>e.clientId===cl.id&&new Date(e.date)>=now());
+  const clEvents=events.filter(e=>e.clientId===cl.id).sort((a,b)=>new Date(a.date)-new Date(b.date));
   const clMsgs=familyMsgs.filter(m=>m.clientId===cl.id).sort((a,b)=>new Date(a.date)-new Date(b.date));
   const clInc=incidents.filter(i=>i.clientId===cl.id&&(i.visibleToClient||i.familyNotified));
-  const sendMsg=()=>{if(!msgText.trim())return;setFamilyMsgs(p=>[...p,{id:"FM"+uid(),clientId:cl.id,from:user.name,fromType:"family",date:now().toISOString(),text:msgText}]);setMsgText("");};
-  const [tab,setTab]=useState("updates");
+  const clScheds=(schedules||[]).filter(s=>s.clientId===cl.id&&s.status==="published").sort((a,b)=>a.date.localeCompare(b.date)||a.startTime.localeCompare(b.startTime));
+  const clVitals=(vitals||[]).filter(v=>v.clientId===cl.id).sort((a,b)=>b.date.localeCompare(a.date));
+  const clExp=(expenses||[]).filter(e=>e.clientId===cl.id&&(e.status==="approved"||e.adminApproved));
+  const clInv=(invoices||[]).filter(i=>i.clientId===cl.id);
+  const assignedCGs=(assignments||[]).filter(a=>a.clientId===cl.id&&a.status==="active").map(a=>caregivers.find(c=>c.id===a.caregiverId)).filter(Boolean);
+  const clNotifs=(notifications||[]).filter(n=>n.to===cl.id||n.to===user.clientId).sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const todayScheds=clScheds.filter(s=>s.date===toISO(now()));
+
+  const sendMsg=()=>{if(!msgText.trim())return;
+    setFamilyMsgs(p=>[...p,{id:"FM"+uid(),clientId:cl.id,from:user.name,fromType:"family",date:now().toISOString(),text:msgText}]);
+    if(notify)notify("U2","message",`Family Message: ${user.name}`,`${user.name} → care team: ${msgText.slice(0,100)}`,{clientId:cl.id});
+    setMsgText("");
+  };
+
+  // Calendar
+  const monthNames=["January","February","March","April","May","June","July","August","September","October","November","December"];
+  const daysInMonth=new Date(calYear,calMonth+1,0).getDate();
+  const firstDow=new Date(calYear,calMonth,1).getDay();
+  const blanks=Array.from({length:firstDow===0?6:(firstDow-1)});
+  const calDays=Array.from({length:daysInMonth},(_,i)=>{const d=new Date(calYear,calMonth,i+1);const iso=toISO(d);return{d,iso,day:i+1,dow:d.getDay(),sch:clScheds.filter(s=>s.date===iso),ev:clEvents.filter(e=>e.date&&e.date.startsWith(iso)),isToday:iso===toISO(now())};});
+
+  const tabs=[
+    {key:"home",label:"🏠 Home"},{key:"schedule",label:"📅 Schedule"},{key:"notes",label:"📝 Notes"},
+    {key:"meds",label:"💊 Meds"},{key:"messages",label:"💬 Messages"},{key:"billing",label:"📊 Billing"},
+    {key:"team",label:"👩‍⚕️ Team"},{key:"alerts",label:"🔔 Alerts"},
+  ];
 
   return <div>
-    <div className="cg-header">
-      <div><div style={{fontSize:11,textTransform:"uppercase",letterSpacing:1.5,opacity:.3,marginBottom:4}}>Family Portal</div><h2>{cl.name}'s Care</h2></div>
-      <div className="cg-meta"><div>Logged in as {user.name}</div><div>{user.title}</div></div>
-    </div>
-    <div className="tab-row">
-      {["updates","messages","events","incidents"].map(t=> <button key={t} className={`tab-btn ${tab===t?"act":""}`} onClick={()=>setTab(t)}>{({updates:"Care Updates",messages:"Messages",events:"Events",incidents:"Incidents"})[t]}</button>)}
+    {/* Header */}
+    <div style={{background:"var(--black)",color:"#fff",padding:"24px 30px",margin:"-16px -16px 20px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+      <div>
+        <div style={{fontSize:10,textTransform:"uppercase",letterSpacing:2,opacity:.3,marginBottom:6}}>CWIN Family Portal</div>
+        <div style={{fontFamily:"var(--fd)",fontSize:24,fontWeight:400}}>{cl.name}'s Care</div>
+        <div style={{fontSize:12,opacity:.5,marginTop:4}}>Logged in as {user.name} ({user.title})</div>
+      </div>
+      <div className="avatar" style={{width:56,height:56,fontSize:20,background:"rgba(255,255,255,.1)",color:"#fff"}}>{cl.name.split(" ").map(n=>n[0]).join("")}</div>
     </div>
 
-    {tab==="updates"&& <div className="card">{clNotes.slice(0,10).map(n=>{const cg=caregivers.find(c=>c.id===n.caregiverId);return <div key={n.id} style={{padding:"12px 20px",borderBottom:"var(--border-thin)"}}>
-      <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"var(--t2)",marginBottom:4}}><span style={{fontWeight:600}}>{cg?.name}</span><span>{fmtD(n.date)} {fmtT(n.date)}</span></div>
-      <div style={{fontSize:13,lineHeight:1.6}}>{n.text}</div>
-    </div>;})}
-    {clNotes.length===0&& <div className="empty">No updates yet</div>}
+    <div className="tab-row">{tabs.map(t=> <button key={t.key} className={`tab-btn ${tab===t.key?"act":""}`} onClick={()=>setTab(t.key)}>{t.label}</button>)}</div>
+
+    {/* ═══ HOME ═══ */}
+    {tab==="home"&& <div>
+      {/* Today's Status */}
+      <div style={{marginBottom:16,border:"var(--border-thin)",overflow:"hidden"}}>
+        <div style={{background:"var(--black)",color:"#fff",padding:"14px 20px",display:"flex",alignItems:"center",gap:8}}>
+          <span className="pulse" style={{background:"#4ade80"}}/>
+          <span style={{fontFamily:"var(--fd)",fontSize:15,fontWeight:400}}>Today — {now().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"})}</span>
+        </div>
+        <div style={{background:"var(--card)",padding:"16px 20px"}}>
+          {todayScheds.length>0? <div>
+            {todayScheds.map(s=>{const cg=caregivers.find(c=>c.id===s.caregiverId);return <div key={s.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:"var(--border-thin)"}}>
+              <div>
+                <div style={{fontSize:15,fontWeight:600}}>{cg?.name}</div>
+                <div style={{fontSize:13,color:"var(--t2)",marginTop:2}}>{s.startTime} — {s.endTime}</div>
+                {s.tasks?.length>0&&<div style={{fontSize:11,color:"var(--t2)",marginTop:4}}>{s.tasks.slice(0,3).join(" • ")}{s.tasks.length>3?` +${s.tasks.length-3} more`:""}</div>}
+              </div>
+              <span className="tag tag-ok" style={{fontSize:10}}>Scheduled</span>
+            </div>;})}
+          </div>
+          : <div style={{textAlign:"center",padding:16,color:"var(--t2)",fontSize:13}}>No visits scheduled today</div>}
+        </div>
+      </div>
+
+      {/* Quick status cards */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10,marginBottom:16}}>
+        <div style={{background:"var(--card)",border:"var(--border-thin)",padding:16,textAlign:"center"}}><div style={{fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:.8,color:"var(--t2)"}}>Care Team</div><div style={{fontFamily:"var(--fd)",fontSize:24,fontWeight:400,marginTop:4}}>{assignedCGs.length}</div><div style={{fontSize:10,color:"var(--t2)"}}>caregivers</div></div>
+        <div style={{background:"var(--card)",border:"var(--border-thin)",padding:16,textAlign:"center"}}><div style={{fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:.8,color:"var(--t2)"}}>This Week</div><div style={{fontFamily:"var(--fd)",fontSize:24,fontWeight:400,marginTop:4}}>{clScheds.filter(s=>{const d=fromISO(s.date);const w=getMonday(now());return d>=w&&d<=addDays(w,6);}).length}</div><div style={{fontSize:10,color:"var(--t2)"}}>visits</div></div>
+        <div style={{background:"var(--card)",border:"var(--border-thin)",padding:16,textAlign:"center"}}><div style={{fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:.8,color:"var(--t2)"}}>Medications</div><div style={{fontFamily:"var(--fd)",fontSize:24,fontWeight:400,marginTop:4}}>{cl.meds?.length||0}</div><div style={{fontSize:10,color:"var(--t2)"}}>active</div></div>
+        <div style={{background:"var(--card)",border:"var(--border-thin)",padding:16,textAlign:"center"}}><div style={{fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:.8,color:"var(--t2)"}}>Alerts</div><div style={{fontFamily:"var(--fd)",fontSize:24,fontWeight:400,marginTop:4,color:clNotifs.filter(n=>!n.read).length>0?"#8a7356":"var(--text)"}}>{clNotifs.filter(n=>!n.read).length}</div><div style={{fontSize:10,color:"var(--t2)"}}>unread</div></div>
+      </div>
+
+      {/* Recent updates */}
+      <div className="card"><div className="card-h"><h3>Recent updates</h3></div>
+        {clNotes.slice(0,4).map(n=>{const cg=caregivers.find(c=>c.id===n.caregiverId);return <div key={n.id} style={{padding:"12px 20px",borderBottom:"var(--border-thin)"}}>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"var(--t2)",marginBottom:4}}><span style={{fontWeight:600}}>{cg?.name}</span><span>{fmtRel(n.date)}</span></div>
+          <div style={{fontSize:13,lineHeight:1.6}}>{n.text.slice(0,180)}{n.text.length>180?"...":""}</div>
+        </div>;})}
+        {clNotes.length===0&&<div className="empty">No updates yet</div>}
+      </div>
     </div>}
 
-    {tab==="messages"&& <div className="card" style={{maxHeight:"65vh",display:"flex",flexDirection:"column"}}>
-      <div className="card-h"><h3>Messages with Care Team</h3></div>
-      <div style={{flex:1,overflow:"auto",padding:"14px 20px",display:"flex",flexDirection:"column",gap:6}}>
-        {clMsgs.map(m=> <div key={m.id} style={{display:"flex",flexDirection:"column",alignItems:m.from===user.name?"flex-end":"flex-start"}}>
-          <div className="chat-meta">{m.from} | {fmtRel(m.date)}</div>
-          <div className={`chat-bubble ${m.from===user.name?"chat-fam":"chat-cg"}`}>{m.text}</div>
+    {/* ═══ SCHEDULE / CALENDAR ═══ */}
+    {tab==="schedule"&& <div>
+      {/* Month Nav */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+        <button className="btn btn-sm btn-s" onClick={()=>{if(calMonth===0){setCalMonth(11);setCalYear(y=>y-1);}else setCalMonth(m=>m-1);}}>←</button>
+        <div style={{textAlign:"center",cursor:"pointer"}} onClick={()=>{setCalMonth(now().getMonth());setCalYear(now().getFullYear());}}>
+          <div style={{fontFamily:"var(--fd)",fontSize:18,fontWeight:400}}>{monthNames[calMonth]} {calYear}</div>
+        </div>
+        <button className="btn btn-sm btn-s" onClick={()=>{if(calMonth===11){setCalMonth(0);setCalYear(y=>y+1);}else setCalMonth(m=>m+1);}}>→</button>
+      </div>
+
+      {/* Calendar Grid */}
+      <div className="card" style={{overflow:"visible",marginBottom:16}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",borderBottom:"var(--border-thin)"}}>
+          {["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map(d=> <div key={d} style={{padding:"8px 4px",textAlign:"center",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:.5,color:"var(--t2)"}}>{d}</div>)}
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)"}}>
+          {blanks.map((_,i)=> <div key={"b"+i} style={{minHeight:60,borderRight:"var(--border-thin)",borderBottom:"var(--border-thin)",background:"var(--bg)",opacity:.3}}/>)}
+          {calDays.map(cd=>{const we=cd.dow===0||cd.dow===6;const past=new Date(cd.iso)<now()&&!cd.isToday;
+            return <div key={cd.day} style={{minHeight:60,borderRight:"var(--border-thin)",borderBottom:"var(--border-thin)",padding:"3px 4px",background:cd.isToday?"rgba(60,79,61,.06)":we?"rgba(0,0,0,.015)":"var(--card)"}}>
+              <div style={{fontSize:11,fontWeight:cd.isToday?700:400,color:cd.isToday?"#3c4f3d":we?"var(--t3)":"var(--text)"}}>{cd.day}</div>
+              {cd.sch.map((s,i)=>{const cg=caregivers.find(c=>c.id===s.caregiverId);return <div key={i} style={{fontSize:7,padding:"1px 3px",marginTop:1,background:past?"rgba(122,48,48,.12)":"#3c4f3d",color:past?"#7a3030":"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.startTime} {cg?.name?.split(" ")[0]}</div>;})}
+              {cd.ev.map((e,i)=> <div key={"e"+i} style={{fontSize:7,padding:"1px 3px",marginTop:1,background:e.type==="medical"?"rgba(122,48,48,.12)":"rgba(60,79,61,.1)",color:e.type==="medical"?"#7a3030":"#3c4f3d",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.type==="medical"?"🏥":"🌱"}</div>)}
+            </div>;
+          })}
+        </div>
+        <div style={{display:"flex",gap:12,padding:"10px 20px",fontSize:10,color:"var(--t2)",flexWrap:"wrap"}}>
+          <span style={{display:"flex",alignItems:"center",gap:3}}><div style={{width:8,height:8,background:"#3c4f3d"}}/> Upcoming visit</span>
+          <span style={{display:"flex",alignItems:"center",gap:3}}><div style={{width:8,height:8,background:"rgba(122,48,48,.12)",border:"1px solid rgba(122,48,48,.3)"}}/> Past visit</span>
+          <span style={{display:"flex",alignItems:"center",gap:3}}><div style={{width:8,height:8,background:"rgba(60,79,61,.06)",border:"1px solid rgba(60,79,61,.2)"}}/> Today</span>
+        </div>
+      </div>
+
+      {/* Upcoming visits list */}
+      <div className="card"><div className="card-h"><h3>Upcoming visits</h3></div>
+        {clScheds.filter(s=>s.date>=toISO(now())).slice(0,8).map(s=>{const cg=caregivers.find(c=>c.id===s.caregiverId);const hrs=((timeToMin(s.endTime)-timeToMin(s.startTime))/60).toFixed(1);return <div key={s.id} style={{padding:"12px 20px",borderBottom:"var(--border-thin)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div><div style={{fontWeight:600,fontSize:14}}>{fromISO(s.date).toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})}</div><div style={{fontSize:12,color:"var(--t2)",marginTop:2}}>{s.startTime} — {s.endTime} ({hrs}h) | {cg?.name}</div></div>
+          <span className="tag tag-ok">Confirmed</span>
+        </div>;})}
+        {clScheds.filter(s=>s.date>=toISO(now())).length===0&&<div className="empty">No upcoming visits</div>}
+      </div>
+    </div>}
+
+    {/* ═══ CARE NOTES ═══ */}
+    {tab==="notes"&& <div>
+      <div className="card">{clNotes.slice(0,15).map(n=>{const cg=caregivers.find(c=>c.id===n.caregiverId);return <div key={n.id} style={{padding:"14px 20px",borderBottom:"var(--border-thin)"}}>
+        <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"var(--t2)",marginBottom:6}}><div style={{display:"flex",gap:6,alignItems:"center"}}><span className={`tag ${NOTE_CATS[n.category]?.color||"tag-ok"}`}>{n.category}</span><span style={{fontWeight:600}}>{cg?.name}</span></div><span>{fmtD(n.date)} {fmtT(n.date)}</span></div>
+        <div style={{fontSize:13,lineHeight:1.7}}>{n.text}</div>
+      </div>;})}
+      {clNotes.length===0&&<div className="empty">No care notes yet</div>}
+      </div>
+
+      {/* Incidents */}
+      {clInc.length>0&& <div className="card" style={{marginTop:14}}>
+        <div className="card-h"><h3>Incident reports</h3></div>
+        {clInc.map(inc=> <div key={inc.id} style={{padding:"12px 20px",borderBottom:"var(--border-thin)"}}>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span className={`tag ${inc.severity==="low"?"tag-wn":"tag-er"}`}>{inc.type} — {inc.severity}</span><span style={{fontSize:11,color:"var(--t2)"}}>{fmtD(inc.date)}</span></div>
+          <div style={{fontSize:13,lineHeight:1.6}}>{inc.description}</div>
+          {inc.followUp&&<div style={{fontSize:12,color:"var(--t2)",marginTop:6,padding:"6px 10px",background:"var(--bg)"}}><strong>Follow-up:</strong> {inc.followUp}</div>}
         </div>)}
+      </div>}
+    </div>}
+
+    {/* ═══ MEDICATIONS ═══ */}
+    {tab==="meds"&& <div>
+      <div className="card"><div className="card-h"><h3>Current medications ({cl.meds?.length||0})</h3></div>
+        <div className="card-b">
+          {(cl.meds||[]).map((m,i)=> <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:i<cl.meds.length-1?"var(--border-thin)":""}}>
+            <div><div style={{fontSize:14,fontWeight:600}}>💊 {m}</div></div>
+            <span className="tag tag-ok" style={{fontSize:9}}>Active</span>
+          </div>)}
+          {(!cl.meds||cl.meds.length===0)&&<div className="empty">No medications on file</div>}
+        </div>
       </div>
-      <div style={{padding:"10px 14px",borderTop:"var(--border-thin)",display:"flex",gap:8}}>
-        <input value={msgText} onChange={e=>setMsgText(e.target.value)} placeholder="Message the care team..." style={{flex:1,padding:"8px 12px",border:"var(--border-thin)",fontSize:13,fontFamily:"var(--f)"}} onKeyDown={e=>e.key==="Enter"&&sendMsg()}/>
-        <button className="btn btn-p btn-sm" onClick={sendMsg} disabled={!msgText.trim()}>Send</button>
+
+      {/* Recent vitals */}
+      {clVitals.length>0&& <div className="card" style={{marginTop:14}}>
+        <div className="card-h"><h3>Recent health observations</h3></div>
+        <div className="tw"><table><thead><tr><th>Date</th><th>BP</th><th>Heart Rate</th><th>Temp</th><th>Glucose</th><th>Weight</th><th>Notes</th></tr></thead><tbody>
+          {clVitals.slice(0,5).map(v=> <tr key={v.id}><td>{fmtD(v.date)}</td><td style={{fontWeight:600}}>{v.bp||"—"}</td><td>{v.hr||"—"}</td><td>{v.temp||"—"}°</td><td>{v.glucose||"—"}</td><td>{v.weight||"—"} lbs</td><td style={{fontSize:11,color:"var(--t2)"}}>{v.notes||""}</td></tr>)}
+        </tbody></table></div>
+      </div>}
+
+      {/* Medication-related incidents */}
+      {clInc.filter(i=>/(Medication|Med)/i.test(i.type)).length>0&& <div className="ai-card" style={{marginTop:14}}>
+        <h4><span className="pulse" style={{background:"#8a7356"}}/>Medication alerts</h4>
+        <p>{clInc.filter(i=>/(Medication|Med)/i.test(i.type)).map(i=>`${fmtD(i.date)}: ${i.description.slice(0,100)}`).join(" | ")}</p>
+      </div>}
+    </div>}
+
+    {/* ═══ MESSAGES ═══ */}
+    {tab==="messages"&& <div>
+      <div className="card" style={{maxHeight:"65vh",display:"flex",flexDirection:"column"}}>
+        <div className="card-h"><h3>Messages with care team</h3></div>
+        <div style={{flex:1,overflow:"auto",padding:"14px 20px",display:"flex",flexDirection:"column",gap:6}}>
+          {clMsgs.length===0&&<div className="empty" style={{padding:30}}>Start a conversation with the care team</div>}
+          {clMsgs.map(m=> <div key={m.id} style={{display:"flex",flexDirection:"column",alignItems:m.from===user.name?"flex-end":"flex-start"}}>
+            <div className="chat-meta">{m.from} | {fmtRel(m.date)}</div>
+            <div className={`chat-bubble ${m.from===user.name?"chat-fam":"chat-cg"}`}>{m.text}</div>
+          </div>)}
+        </div>
+        <div style={{padding:"10px 14px",borderTop:"var(--border-thin)",display:"flex",gap:8}}>
+          <input value={msgText} onChange={e=>setMsgText(e.target.value)} placeholder="Message the care team..." style={{flex:1,padding:"10px 14px",border:"var(--border-thin)",fontSize:14,fontFamily:"var(--f)"}} onKeyDown={e=>e.key==="Enter"&&sendMsg()}/>
+          <button className="btn btn-p" onClick={sendMsg} disabled={!msgText.trim()}>Send</button>
+        </div>
       </div>
     </div>}
 
-    {tab==="events"&& <div className="card">{clEvents.map(ev=> <div key={ev.id} style={{padding:"12px 20px",borderBottom:"var(--border-thin)",display:"flex",justifyContent:"space-between"}}>
-      <div><div style={{fontWeight:600,fontSize:14}}>{ev.title}</div><div style={{fontSize:12,color:"var(--t2)"}}>{fmtD(ev.date)}</div></div>
-      <span className={`tag ${ev.type==="medical"?"tag-er":"tag-bl"}`}>{ev.type}</span>
-    </div>)}{clEvents.length===0&& <div className="empty">No upcoming events</div>}</div>}
+    {/* ═══ BILLING & REPORTS ═══ */}
+    {tab==="billing"&& <div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10,marginBottom:16}}>
+        <div style={{background:"var(--card)",border:"var(--border-thin)",padding:16,textAlign:"center"}}><div style={{fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:.8,color:"var(--t2)"}}>Total Billed</div><div style={{fontFamily:"var(--fd)",fontSize:22,fontWeight:400,marginTop:4}}>{$(clInv.reduce((s,i)=>s+i.total,0))}</div></div>
+        <div style={{background:"var(--card)",border:"var(--border-thin)",padding:16,textAlign:"center"}}><div style={{fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:.8,color:"var(--t2)"}}>Hours This Month</div><div style={{fontFamily:"var(--fd)",fontSize:22,fontWeight:400,marginTop:4}}>{clScheds.filter(s=>s.date?.startsWith(toISO(now()).slice(0,7))).reduce((s,sh)=>s+(timeToMin(sh.endTime)-timeToMin(sh.startTime))/60,0).toFixed(0)}h</div></div>
+        <div style={{background:"var(--card)",border:"var(--border-thin)",padding:16,textAlign:"center"}}><div style={{fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:.8,color:"var(--t2)"}}>Expenses</div><div style={{fontFamily:"var(--fd)",fontSize:22,fontWeight:400,marginTop:4}}>{$(clExp.reduce((s,e)=>s+e.amount,0))}</div></div>
+      </div>
 
-    {tab==="incidents"&& <div className="card">{clInc.map(inc=> <div key={inc.id} style={{padding:"12px 20px",borderBottom:"var(--border-thin)"}}>
-      <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span className={`tag ${inc.severity==="low"?"tag-wn":"tag-er"}`}>{inc.type} ({inc.severity})</span><span style={{fontSize:11,color:"var(--t2)"}}>{fmtD(inc.date)}</span></div>
-      <div style={{fontSize:13,lineHeight:1.6}}>{inc.description}</div>
-      {inc.followUp&& <div style={{fontSize:12,color:"var(--t2)",marginTop:6,padding:"6px 10px",background:"var(--bg)"}}><strong>Follow-up:</strong> {inc.followUp}</div>}
-    </div>)}{clInc.length===0&& <div className="empty">No incidents reported</div>}</div>}
+      {/* Invoices */}
+      <div className="card"><div className="card-h"><h3>Invoices</h3></div>
+        <div className="tw"><table><thead><tr><th>Invoice #</th><th>Period</th><th>Date</th><th style={{textAlign:"right"}}>Amount</th><th>Status</th></tr></thead><tbody>
+          {clInv.map(inv=> <tr key={inv.id}><td style={{fontFamily:"monospace",fontWeight:700}}>{inv.id}</td><td style={{fontSize:11}}>{fmtD(inv.date)}</td><td>{fmtD(inv.dueDate)}</td><td style={{textAlign:"right",fontWeight:700}}>{$(inv.total)}</td><td><span className={`tag ${inv.status==="paid"?"tag-ok":"tag-wn"}`}>{inv.status}</span></td></tr>)}
+        </tbody></table></div>
+        {clInv.length===0&&<div className="empty">No invoices yet</div>}
+      </div>
+
+      {/* Approved expenses (shopping, mileage) */}
+      {clExp.length>0&& <div className="card" style={{marginTop:14}}>
+        <div className="card-h"><h3>Expense details (shopping, mileage, supplies)</h3></div>
+        <div className="tw"><table><thead><tr><th>Date</th><th>Category</th><th>Description</th><th>Caregiver</th><th style={{textAlign:"right"}}>Amount</th></tr></thead><tbody>
+          {clExp.map(e=>{const cg=caregivers.find(c=>c.id===e.caregiverId);return <tr key={e.id}><td>{fmtD(e.date)}</td><td><span className="tag tag-bl">{e.category}</span></td><td>{e.description}</td><td>{cg?.name||"—"}</td><td style={{textAlign:"right",fontWeight:600}}>${e.amount.toFixed(2)}</td></tr>;})}
+        </tbody></table></div>
+      </div>}
+    </div>}
+
+    {/* ═══ CARE TEAM ═══ */}
+    {tab==="team"&& <div>
+      {assignedCGs.map(cg=> <div key={cg.id} className="card card-b" style={{display:"flex",gap:16,alignItems:"flex-start",marginBottom:12}}>
+        <div className="avatar" style={{width:56,height:56,fontSize:18,background:"#111",color:"#fff",flexShrink:0}}>{cg.avatar||cg.name.split(" ").map(n=>n[0]).join("")}</div>
+        <div style={{flex:1}}>
+          <div style={{fontFamily:"var(--fd)",fontSize:18,fontWeight:400}}>{cg.name}</div>
+          <div style={{fontSize:12,color:"var(--t2)",marginTop:2}}>{cg.email} | {cg.phone}</div>
+          <div style={{display:"flex",gap:4,marginTop:8,flexWrap:"wrap"}}>
+            {(cg.certs||[]).map(c=> <span key={c} className="tag tag-bl">{c}</span>)}
+          </div>
+          <div style={{fontSize:11,color:"var(--t2)",marginTop:8}}>Hired: {fmtD(cg.hireDate)} | Rate: ${cg.rate}/hr</div>
+        </div>
+      </div>)}
+      {assignedCGs.length===0&&<div className="card card-b empty">No caregivers assigned yet</div>}
+    </div>}
+
+    {/* ═══ NOTIFICATIONS / ALERTS ═══ */}
+    {tab==="alerts"&& <div>
+      <div className="ai-card"><h4><span className="pulse" style={{background:"#3c4f3d"}}/>Notification center</h4>
+        <p>You receive alerts when caregivers clock in/out, when they're running late, for schedule changes, emergencies, and incident reports. In production, these will also be sent as text/call alerts.</p>
+      </div>
+
+      {clNotifs.length===0&&<div className="card card-b empty">No notifications yet. You'll receive alerts for caregiver arrivals, departures, late notifications, and schedule changes.</div>}
+      {clNotifs.map(n=> <div key={n.id} style={{padding:"14px 20px",borderBottom:"var(--border-thin)",background:n.read?"var(--card)":"rgba(138,115,86,.04)"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:4}}>
+          <div style={{display:"flex",alignItems:"center",gap:6}}>
+            {!n.read&&<div style={{width:6,height:6,borderRadius:"50%",background:"#8a7356"}}/>}
+            <span style={{fontSize:13,fontWeight:600}}>{n.title}</span>
+            <span className={`tag ${n.type==="running_late"?"tag-wn":n.type==="incident"?"tag-er":"tag-ok"}`} style={{fontSize:8}}>{n.type.replace(/_/g," ")}</span>
+          </div>
+          <span style={{fontSize:10,color:"var(--t2)"}}>{fmtRel(n.date)}</span>
+        </div>
+        <div style={{fontSize:12,color:"var(--t2)",lineHeight:1.6}}>{n.body}</div>
+      </div>)}
+
+      {/* Text/Call Alert Info */}
+      <div style={{padding:16,background:"var(--bg)",marginTop:16,border:"var(--border-thin)"}}>
+        <div style={{fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:.5,color:"var(--t2)",marginBottom:8}}>📱 Automatic text/call alerts</div>
+        <div style={{fontSize:12,color:"var(--t2)",lineHeight:1.7}}>
+          In production, the following events will trigger automatic SMS/call notifications to your registered phone number:
+        </div>
+        <div style={{marginTop:8,display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+          {["Caregiver running late → Text with ETA","Caregiver arrived → Text confirmation","Emergency incident → Phone call + text","Missed visit → Text + call to office","Schedule change → Text notification","Caregiver departure → Text with visit summary"].map((item,i)=> <div key={i} style={{padding:"8px 12px",background:"var(--card)",border:"var(--border-thin)",fontSize:11}}>✓ {item}</div>)}
+        </div>
+      </div>
+    </div>}
   </div>;
 }
 
@@ -2154,7 +2375,7 @@ export default function App(){
       </div>
     </div>
     <div className="main">
-      <FamilyStandalonePortal user={user} clients={clients} caregivers={caregivers} careNotes={careNotes} events={events} familyMsgs={familyMsgs} setFamilyMsgs={setFamilyMsgs} incidents={incidents}/>
+      <FamilyStandalonePortal user={user} clients={clients} caregivers={caregivers} careNotes={careNotes} events={events} familyMsgs={familyMsgs} setFamilyMsgs={setFamilyMsgs} incidents={incidents} schedules={schedules} expenses={expenses} vitals={vitals} invoices={invoices} assignments={assignments} notifications={notifications} notify={notify}/>
     </div>
   </div></>;
 
