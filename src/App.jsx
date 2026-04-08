@@ -4441,6 +4441,7 @@ function BillingPage({invoices,setInvoices,clients,caregivers,rateCards,billingP
   const [showGen,setShowGen]=useState(false);
   const [genClient,setGenClient]=useState("");
   const [genPeriod,setGenPeriod]=useState(billingPeriods[0]?.id||"");
+  const [posted,setPosted]=useState(false);
 
   const totalBilled=invoices.reduce((s,i)=>s+i.total,0);
   const totalPaid=invoices.filter(i=>i.status==="paid").reduce((s,i)=>s+i.total,0);
@@ -4536,7 +4537,6 @@ function BillingPage({invoices,setInvoices,clients,caregivers,rateCards,billingP
       const lateFee=sel.lateFee||0;
       const prevBalance=sel.prevBalance||0;
       const totalBalance=sel.total+lateFee+prevBalance;
-      const [posted,setPosted]=useState(false);
 
       const handlePDF=()=>{
         const el=document.getElementById("cwin-invoice-print");
