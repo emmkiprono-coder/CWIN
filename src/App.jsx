@@ -2527,7 +2527,7 @@ export default function App(){
       </div>
     </div>
     <div className="main">
-      <ClientPortalPage clients={clients} caregivers={caregivers} notify={notify} assignments={assignments} sel={user.clientId||"CL1"} setSel={()=>{}} serviceRequests={serviceRequests} setServiceRequests={setServiceRequests} surveys={surveys} setSurveys={setSurveys} careGoals={careGoals} vitals={vitals} setVitals={setVitals} documents={documents} careNotes={careNotes} events={events} expenses={expenses} familyMsgs={familyMsgs} setFamilyMsgs={setFamilyMsgs}/>
+      <ClientPortalPage clients={clients} caregivers={caregivers} notify={notify} assignments={assignments} sel={user.clientId||"CL1"} setSel={()=>{}} serviceRequests={serviceRequests} setServiceRequests={setServiceRequests} surveys={surveys} setSurveys={setSurveys} careGoals={careGoals} vitals={vitals} setVitals={setVitals} documents={documents} careNotes={careNotes} events={events} expenses={expenses} familyMsgs={familyMsgs} setFamilyMsgs={setFamilyMsgs} notifications={notifications}/>
     </div>
   </div></>;
 
@@ -2578,7 +2578,7 @@ export default function App(){
       {pg==="compliance"&&<CompliancePage items={compliance} setItems={setCompliance} caregivers={caregivers} clients={clients}/>}
       {pg==="training"&&<TrainingPage caregivers={caregivers} progress={trainingProgress} setProgress={setTrainingProgress} modal={modal} setModal={setModal}/>}
       {pg==="events"&&<EventsPage events={events} setEvents={setEvents} clients={clients}/>}
-      {pg==="portal"&&<ClientPortalPage clients={clients} caregivers={caregivers} notify={notify} assignments={assignments} sel={portalClient} setSel={setPortalClient} serviceRequests={serviceRequests} setServiceRequests={setServiceRequests} surveys={surveys} setSurveys={setSurveys} careGoals={careGoals} vitals={vitals} setVitals={setVitals} documents={documents} careNotes={careNotes} events={events} expenses={expenses} familyMsgs={familyMsgs} setFamilyMsgs={setFamilyMsgs}/>}
+      {pg==="portal"&&<ClientPortalPage clients={clients} caregivers={caregivers} notify={notify} assignments={assignments} sel={portalClient} setSel={setPortalClient} serviceRequests={serviceRequests} setServiceRequests={setServiceRequests} surveys={surveys} setSurveys={setSurveys} careGoals={careGoals} vitals={vitals} setVitals={setVitals} documents={documents} careNotes={careNotes} events={events} expenses={expenses} familyMsgs={familyMsgs} setFamilyMsgs={setFamilyMsgs} notifications={notifications}/>}
       {pg==="family"&&<FamilyPage clients={clients} familyMsgs={familyMsgs} setFamilyMsgs={setFamilyMsgs} careNotes={careNotes} incidents={incidents} events={events}/>}
       {pg==="team"&&<TeamPage caregivers={caregivers} setCaregivers={setCaregivers} progress={trainingProgress}/>}
       {pg==="users"&&<UserManagementPage allUsers={allUsers} setAllUsers={setAllUsers}/>}
@@ -3612,7 +3612,7 @@ function TrainingPage({caregivers,progress,setProgress,modal,setModal}){
 // ═══════════════════════════════════════════════════════════════════════
 // CLIENT PORTAL — Full interactive client-facing experience
 // ═══════════════════════════════════════════════════════════════════════
-function ClientPortalPage({clients,caregivers,notify,assignments,sel,setSel,serviceRequests,setServiceRequests,surveys,setSurveys,careGoals,vitals,setVitals,documents,careNotes,events,expenses,familyMsgs,setFamilyMsgs}){
+function ClientPortalPage({clients,caregivers,notify,assignments,sel,setSel,serviceRequests,setServiceRequests,surveys,setSurveys,careGoals,vitals,setVitals,documents,careNotes,events,expenses,familyMsgs,setFamilyMsgs,notifications}){
   const cl=clients.find(c=>c.id===sel)||clients[0];
   const [tab,setTab]=useState("home");
   const [showRequest,setShowRequest]=useState(false);
@@ -3623,6 +3623,9 @@ function ClientPortalPage({clients,caregivers,notify,assignments,sel,setSel,serv
   const clNotes=careNotes.filter(n=>n.clientId===cl.id).sort((a,b)=>new Date(b.date)-new Date(a.date));
   const clEvents=events.filter(e=>e.clientId===cl.id && new Date(e.date)>=now()).sort((a,b)=>new Date(a.date)-new Date(b.date));
   const clGoals=careGoals.filter(g=>g.clientId===cl.id);
+  // Client alerts/notifications
+  const clAlerts=(notifications||[]).filter(n=>n.to===cl.id||n.meta?.clientId===cl.id).sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const activeLateAlert=clAlerts.find(n=>n.type==="running_late"&&(now()-new Date(n.date))<3600000);
   const clVitals=vitals.filter(v=>v.clientId===cl.id).sort((a,b)=>b.date.localeCompare(a.date));
   const clDocs=documents.filter(d=>d.clientId===cl.id);
   const clRequests=serviceRequests.filter(r=>r.clientId===cl.id).sort((a,b)=>new Date(b.date)-new Date(a.date));
@@ -3635,6 +3638,7 @@ function ClientPortalPage({clients,caregivers,notify,assignments,sel,setSel,serv
 
   const tabs=[
     {key:"home",label:"🏠 Home",show:true},
+    {key:"alerts",label:"🔔 Alerts"+(clAlerts.filter(a=>!a.read).length>0?" ("+clAlerts.filter(a=>!a.read).length+")":""),show:true},
     {key:"schedule",label:"📅 Schedule",show:true},
     {key:"health",label:"❤️ Health",show:true},
     {key:"goals",label:"🎯 Goals",show:true},
@@ -3674,6 +3678,20 @@ function ClientPortalPage({clients,caregivers,notify,assignments,sel,setSel,serv
 
     {/* ═══ HOME ═══ */}
     {tab==="home"&& <div>
+      {/* Running Late Alert Banner */}
+      {activeLateAlert&& <div style={{background:"linear-gradient(135deg,#6b4400,#8a5a00)",color:"#fff",padding:"16px 20px",marginBottom:14,display:"flex",gap:16,alignItems:"center",border:"2px solid #ffa94d"}}>
+        <div style={{fontSize:32}}>⚠️</div>
+        <div style={{flex:1}}>
+          <div style={{fontWeight:700,fontSize:15,marginBottom:4}}>Caregiver Running Late</div>
+          <div style={{fontSize:13,lineHeight:1.5}}>{activeLateAlert.body}</div>
+          <div style={{fontSize:11,opacity:.8,marginTop:4}}>Received {new Date(activeLateAlert.date).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}</div>
+        </div>
+        <div style={{textAlign:"center"}}>
+          <div style={{fontSize:28,fontWeight:700}}>{activeLateAlert.meta?.eta||"?"}</div>
+          <div style={{fontSize:10,textTransform:"uppercase"}}>min ETA</div>
+        </div>
+      </div>}
+
       {/* Welcome Card */}
       <div className="ai-card">
         <h4><span className="pulse" style={{background:"var(--ok)"}}/>Welcome, {cl.name.split(" ")[0]}</h4>
@@ -3706,6 +3724,33 @@ function ClientPortalPage({clients,caregivers,notify,assignments,sel,setSel,serv
         <button className="btn btn-s" style={{flexDirection:"column",padding:16,height:"auto",gap:8}} onClick={()=>setTab("messages")}>💬<span>Messages</span></button>
         <button className="btn btn-s" style={{flexDirection:"column",padding:16,height:"auto",gap:8}} onClick={()=>{setTab("feedback");setShowSurvey(true);}}>⭐<span>Give Feedback</span></button>
         <button className="btn btn-s" style={{flexDirection:"column",padding:16,height:"auto",gap:8}} onClick={()=>setTab("health")}>❤️<span>Vitals</span></button>
+      </div>
+    </div>}
+
+    {/* ═══ ALERTS ═══ */}
+    {tab==="alerts"&& <div>
+      {activeLateAlert&& <div style={{background:"linear-gradient(135deg,#6b4400,#8a5a00)",color:"#fff",padding:"16px 20px",marginBottom:14,display:"flex",gap:16,alignItems:"center",border:"2px solid #ffa94d"}}>
+        <div style={{fontSize:32}}>⚠️</div>
+        <div style={{flex:1}}>
+          <div style={{fontWeight:700,fontSize:15,marginBottom:4}}>ACTIVE: Caregiver Running Late</div>
+          <div style={{fontSize:13,lineHeight:1.5}}>{activeLateAlert.body}</div>
+        </div>
+        <div style={{textAlign:"center"}}><div style={{fontSize:28,fontWeight:700}}>{activeLateAlert.meta?.eta||"?"}</div><div style={{fontSize:10,textTransform:"uppercase"}}>min ETA</div></div>
+      </div>}
+      <div className="card">
+        <div className="card-h"><h3>All Alerts & Notifications</h3></div>
+        {clAlerts.length===0&& <div className="empty">No alerts</div>}
+        {clAlerts.map(a=><div key={a.id} style={{padding:"14px 20px",borderBottom:"var(--border-thin)",display:"flex",gap:14,alignItems:"flex-start",background:a.read?"transparent":"#fffbf0"}}>
+          <div style={{fontSize:20,marginTop:2}}>
+            {a.type==="running_late"?"⚠️":a.type==="clock_in"?"✅":a.type==="clock_out"?"👋":a.type==="incident"?"🚨":a.type==="schedule_change"?"📅":"🔔"}
+          </div>
+          <div style={{flex:1}}>
+            <div style={{fontWeight:700,fontSize:13}}>{a.title}</div>
+            <div style={{fontSize:12,color:"var(--t2)",marginTop:2,lineHeight:1.5}}>{a.body}</div>
+            <div style={{fontSize:10,color:"var(--t2)",marginTop:4}}>{new Date(a.date).toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})} at {new Date(a.date).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}</div>
+          </div>
+          {a.type==="running_late"&&a.meta?.eta&& <div style={{background:"#6b4400",color:"#fff",padding:"6px 12px",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>{a.meta.eta} min ETA</div>}
+        </div>)}
       </div>
     </div>}
 
