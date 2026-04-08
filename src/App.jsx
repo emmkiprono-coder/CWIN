@@ -458,6 +458,50 @@ function TypeaheadInput({list,placeholder,onSelect,existing=[]}){
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+// PROFILE AVATAR — Shows photo or initials fallback
+// ═══════════════════════════════════════════════════════════════════════
+function ProfileAvatar({name,photo,size=48,dark=false}){
+  const initials=name?.split(" ").map(n=>n[0]).join("")||"?";
+  if(photo) return <img src={photo} alt={name} style={{width:size,height:size,objectFit:"cover",border:"var(--border-thin)",flexShrink:0}}/>;
+  return <div style={{width:size,height:size,display:"flex",alignItems:"center",justifyContent:"center",background:dark?"#111":"var(--bg)",color:dark?"#fff":"var(--text)",fontFamily:"var(--fd)",fontSize:size*.35,fontWeight:400,flexShrink:0,border:"var(--border-thin)"}}>{initials}</div>;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// PHOTO UPLOAD — Converts to base64 for storage
+// ═══════════════════════════════════════════════════════════════════════
+function PhotoUpload({currentPhoto,onUpload,label="Upload photo"}){
+  const fileRef=useRef(null);
+  const handleFile=(e)=>{
+    const file=e.target.files[0];
+    if(!file)return;
+    if(!file.type.startsWith("image/")){alert("Please select an image file");return;}
+    if(file.size>2*1024*1024){alert("Image must be under 2MB");return;}
+    const reader=new FileReader();
+    reader.onload=(ev)=>{
+      const img=new Image();
+      img.onload=()=>{
+        const canvas=document.createElement("canvas");
+        const max=200;
+        let w=img.width,h=img.height;
+        if(w>h){if(w>max){h=h*(max/w);w=max;}}else{if(h>max){w=w*(max/h);h=max;}}
+        canvas.width=w;canvas.height=h;
+        canvas.getContext("2d").drawImage(img,0,0,w,h);
+        onUpload(canvas.toDataURL("image/jpeg",0.8));
+      };
+      img.src=ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+  return <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:8}}>
+    {currentPhoto? <img src={currentPhoto} alt="Profile" style={{width:80,height:80,objectFit:"cover",border:"var(--border-thin)"}}/>
+    : <div style={{width:80,height:80,display:"flex",alignItems:"center",justifyContent:"center",background:"var(--bg)",border:"2px dashed var(--bdr)",fontSize:10,color:"var(--t2)",textAlign:"center",padding:8}}>No photo</div>}
+    <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} style={{display:"none"}}/>
+    <button className="btn btn-sm btn-s" onClick={()=>fileRef.current?.click()}>{currentPhoto?"Change":"Upload"}</button>
+    {currentPhoto&&<button className="btn btn-sm btn-s" style={{fontSize:10,color:"var(--err)"}} onClick={()=>onUpload(null)}>Remove</button>}
+  </div>;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 // AI CLINICAL AGENT — Acuity scoring, action recommendations
 // ═══════════════════════════════════════════════════════════════════════
 function ClinicalAgent({cl,incidents,careNotes}){
@@ -626,29 +670,29 @@ const CLIENTS=[
    social:{interests:["Bridge club","Classical music","Gardening","Reading mystery novels"],faith:"Episcopal",pets:"Cat named Whiskers",birthday:"1947-08-14"},
    preferences:{wakeTime:"7:30 AM",bedTime:"9:00 PM",tea:"Earl Grey with honey",diet:"Low sodium",tvShows:["Jeopardy","PBS NewsHour"]},
    familyPortal:{enabled:true,contacts:[{name:"Tom Sutton",relation:"Son",email:"tom.sutton@email.com",access:["daily_notes","medications","schedule"]},{name:"Sarah Sutton",relation:"Daughter-in-law",email:"sarah.s@email.com",access:["daily_notes","schedule"]}]},
-   status:"active",riskLevel:"low",billRate:50},
+   status:"active",riskLevel:"low",billRate:50,photo:null},
   {id:"CL2",name:"Linda Frank",age:84,addr:"3930 N Pine Grove Ave, Chicago IL 60613",phone:"773-555-0201",emergency:"Mike Frank (nephew) 773-555-0202",
    dx:["CHF (NYHA Class II)","Type 2 Diabetes","Chronic back pain","Depression"],meds:["Metformin 500mg","Furosemide 20mg","Sertraline 50mg","Carvedilol 12.5mg","Gabapentin 300mg"],
    adl:{bathing:"Moderate assist (50%) — needs hands-on help with washing upper or lower body",dressing:"Minimal assist (25%) — needs help with buttons, zippers, or back closures",eating:"Independent with setup — needs meal cut, containers opened, tray positioned",toileting:"Standby assist — needs someone nearby for transfers or balance",mobility:"Fall risk — ambulatory but history of falls, requires precautions",transferring:"Minimal assist (25%) — needs steadying or light support during pivot",continence:"Managed with scheduled toileting — continent when prompted",cognition:"Moderate impairment — needs reminders for daily tasks, supervision recommended"},
    social:{interests:["Watching old movies","Phone calls with friends","Crossword puzzles","Dog care"],faith:"Catholic",pets:"Dog named Buddy",birthday:"1941-11-22"},
    preferences:{wakeTime:"8:00 AM",bedTime:"10:00 PM",tea:"Chamomile",diet:"Diabetic, cardiac",tvShows:["TCM classics","The Price is Right"]},
    familyPortal:{enabled:true,contacts:[{name:"Mike Frank",relation:"Nephew",email:"mike.frank@email.com",access:["daily_notes","medications","incidents","schedule","health_vitals"]}]},
-   status:"active",riskLevel:"medium",billRate:35},
+   status:"active",riskLevel:"medium",billRate:35,photo:null},
   {id:"CL3",name:"Steven Brown",age:72,addr:"4920 N Marine Dr, Chicago IL 60640",phone:"773-555-0301",emergency:"Janet Brown (wife) 773-555-0302",
    dx:["Parkinson's disease (Stage 2)","Mild depression","Benign prostatic hyperplasia"],meds:["Carbidopa-Levodopa 25/100","Tamsulosin 0.4mg","Escitalopram 10mg"],
    adl:{bathing:"Minimal assist (25%) — can do most of task, needs help with one body part (e.g. back, feet)",dressing:"Minimal assist due to tremor — fine motor difficulty with fasteners",eating:"Independent with adaptive equipment — uses built-up utensils, plate guard, etc.",toileting:"Independent with equipment — uses raised seat, grab bars, or commode",mobility:"Slow gait, balance issues — ambulatory with gait abnormality",transferring:"Standby assist — caregiver within arm's reach, no contact unless needed",continence:"Occasionally incontinent — accidents less than weekly",cognition:"Mild cognitive impairment (MCI) — diagnosed, memory lapses, judgment intact"},
    social:{interests:["Jazz music","Chess","Watching Cubs games","Reading history books"],faith:"Baptist",pets:"None",birthday:"1953-05-30"},
    preferences:{wakeTime:"7:00 AM",bedTime:"9:30 PM",tea:"Black coffee, 1 sugar",diet:"Regular",tvShows:["Cubs games","60 Minutes","History Channel"]},
    familyPortal:{enabled:true,contacts:[{name:"Janet Brown",relation:"Wife",email:"janet.brown@email.com",access:["daily_notes","medications","incidents","schedule","health_vitals","expenses"]}]},
-   status:"active",riskLevel:"medium",billRate:35},
+   status:"active",riskLevel:"medium",billRate:35,photo:null},
 ];
 
 // ─── SEED: CAREGIVERS ───────────────────────────────────────────────
 const CAREGIVERS=[
-  {id:"CG1",name:"Erolyn Francis",email:"erolyn@cwinathome.com",phone:"312-555-1001",rate:35,certs:["CNA","CPR/BLS","Alzheimer's Care"],hireDate:"2024-06-15",status:"active",avatar:"EF",trainingComplete:8,trainingTotal:12},
-  {id:"CG2",name:"Faith Chepkwony",email:"faith@cwinathome.com",phone:"312-555-1002",rate:20,certs:["HHA","CPR/BLS"],hireDate:"2025-01-10",status:"active",avatar:"FC",trainingComplete:5,trainingTotal:12},
-  {id:"CG3",name:"Olena Krutiak",email:"olena@cwinathome.com",phone:"773-555-1003",rate:20,certs:["CNA","CPR/BLS","Parkinson's Care"],hireDate:"2024-09-01",status:"active",avatar:"OK",trainingComplete:10,trainingTotal:12},
-  {id:"CG4",name:"Tiffany Brown",email:"tiffany@cwinathome.com",phone:"773-555-1004",rate:20,certs:["HHA","CPR/BLS","First Aid"],hireDate:"2024-11-20",status:"active",avatar:"TB",trainingComplete:7,trainingTotal:12},
+  {id:"CG1",name:"Erolyn Francis",email:"erolyn@cwinathome.com",phone:"312-555-1001",rate:35,certs:["CNA","CPR/BLS","Alzheimer's Care"],hireDate:"2024-06-15",status:"active",avatar:"EF",photo:null,trainingComplete:8,trainingTotal:12},
+  {id:"CG2",name:"Faith Chepkwony",email:"faith@cwinathome.com",phone:"312-555-1002",rate:20,certs:["HHA","CPR/BLS"],hireDate:"2025-01-10",status:"active",avatar:"FC",photo:null,trainingComplete:5,trainingTotal:12},
+  {id:"CG3",name:"Olena Krutiak",email:"olena@cwinathome.com",phone:"773-555-1003",rate:20,certs:["CNA","CPR/BLS","Parkinson's Care"],hireDate:"2024-09-01",status:"active",avatar:"OK",photo:null,trainingComplete:10,trainingTotal:12},
+  {id:"CG4",name:"Tiffany Brown",email:"tiffany@cwinathome.com",phone:"773-555-1004",rate:20,certs:["HHA","CPR/BLS","First Aid"],hireDate:"2024-11-20",status:"active",avatar:"TB",photo:null,trainingComplete:7,trainingTotal:12},
 ];
 
 // ─── SEED: TRAINING MODULES ─────────────────────────────────────────
@@ -1699,7 +1743,7 @@ function CaregiverPortal({user,clients,caregivers,careNotes,setCareNotes,inciden
     {tab==="clients"&& <div>
       {myClients.map(cl=> <div key={cl.id} className="card card-b">
         <div style={{display:"flex",gap:14,alignItems:"center",marginBottom:12}}>
-          <div className="avatar" style={{width:48,height:48,fontSize:16,background:"#111",color:"#fff"}}>{cl.name.split(" ").map(n=>n[0]).join("")}</div>
+          <ProfileAvatar name={cl.name} photo={cl.photo} size={48} dark/>
           <div style={{flex:1}}><div style={{fontFamily:"var(--fd)",fontSize:18,fontWeight:400}}>{cl.name}</div><div style={{fontSize:12,color:"var(--t2)"}}>{cl.addr}</div></div>
           <span className={`tag tag-${cl.riskLevel==="low"?"ok":cl.riskLevel==="medium"?"wn":"er"}`}>{cl.riskLevel}</span>
         </div>
@@ -1946,7 +1990,7 @@ function FamilyStandalonePortal({user,clients,caregivers,careNotes,events,family
         <div style={{fontFamily:"var(--fd)",fontSize:24,fontWeight:400}}>{cl.name}'s Care</div>
         <div style={{fontSize:12,opacity:.5,marginTop:4}}>Logged in as {user.name} ({user.title})</div>
       </div>
-      <div className="avatar" style={{width:56,height:56,fontSize:20,background:"rgba(255,255,255,.1)",color:"#fff"}}>{cl.name.split(" ").map(n=>n[0]).join("")}</div>
+      <ProfileAvatar name={cl.name} photo={cl.photo} size={56} dark/>
     </div>
 
     <div className="tab-row">{tabs.map(t=> <button key={t.key} className={`tab-btn ${tab===t.key?"act":""}`} onClick={()=>setTab(t.key)}>{t.label}</button>)}</div>
@@ -2128,7 +2172,7 @@ function FamilyStandalonePortal({user,clients,caregivers,careNotes,events,family
     {/* ═══ CARE TEAM ═══ */}
     {tab==="team"&& <div>
       {assignedCGs.map(cg=> <div key={cg.id} className="card card-b" style={{display:"flex",gap:16,alignItems:"flex-start",marginBottom:12}}>
-        <div className="avatar" style={{width:56,height:56,fontSize:18,background:"#111",color:"#fff",flexShrink:0}}>{cg.avatar||cg.name.split(" ").map(n=>n[0]).join("")}</div>
+        <ProfileAvatar name={cg.name} photo={cg.photo} size={56} dark/>
         <div style={{flex:1}}>
           <div style={{fontFamily:"var(--fd)",fontSize:18,fontWeight:400}}>{cg.name}</div>
           <div style={{fontSize:12,color:"var(--t2)",marginTop:2}}>{cg.email} | {cg.phone}</div>
@@ -2246,7 +2290,7 @@ export default function App(){
   const [allUsers,setAllUsers]=useState(USERS);
   const [pg,setPg]=useState("dash");
   const [clients,setClients]=useState(CLIENTS);
-  const [caregivers]=useState(CAREGIVERS);
+  const [caregivers,setCaregivers]=useState(CAREGIVERS);
   const [chores,setChores]=useState(seedChores);
   const [incidents,setIncidents]=useState(seedIncidents);
   const [careNotes,setCareNotes]=useState(seedCareNotes);
@@ -2413,7 +2457,7 @@ export default function App(){
       {pg==="events"&&<EventsPage events={events} setEvents={setEvents} clients={clients}/>}
       {pg==="portal"&&<ClientPortalPage clients={clients} caregivers={caregivers} notify={notify} assignments={assignments} sel={portalClient} setSel={setPortalClient} serviceRequests={serviceRequests} setServiceRequests={setServiceRequests} surveys={surveys} setSurveys={setSurveys} careGoals={careGoals} vitals={vitals} setVitals={setVitals} documents={documents} careNotes={careNotes} events={events} expenses={expenses} familyMsgs={familyMsgs} setFamilyMsgs={setFamilyMsgs}/>}
       {pg==="family"&&<FamilyPage clients={clients} familyMsgs={familyMsgs} setFamilyMsgs={setFamilyMsgs} careNotes={careNotes} incidents={incidents} events={events}/>}
-      {pg==="team"&&<TeamPage caregivers={caregivers} progress={trainingProgress}/>}
+      {pg==="team"&&<TeamPage caregivers={caregivers} setCaregivers={setCaregivers} progress={trainingProgress}/>}
       {pg==="users"&&<UserManagementPage allUsers={allUsers} setAllUsers={setAllUsers}/>}
       {pg==="notifications"&&<NotificationsPage notifications={notifications} setNotifications={setNotifications} allUsers={allUsers} clients={clients} caregivers={caregivers} incidents={incidents} setIncidents={setIncidents} expenses={expenses} setExpenses={setExpenses}/>}
       {pg==="incident_settings"&&<IncidentSettingsPage prompts={incidentPrompts} setPrompts={setIncidentPrompts}/>}
@@ -2820,7 +2864,10 @@ function ClientsPage({clients,setClients,sel,setSel,caregivers,careNotes,inciden
 
     {/* Client Header */}
     <div className="card card-b" style={{display:"flex",gap:20,alignItems:"center",flexWrap:"wrap"}}>
-      <div className="avatar" style={{width:56,height:56,fontSize:20,background:"#111",color:"#fff"}}>{cl.name.split(" ").map(n=>n[0]).join("")}</div>
+      <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6}}>
+        <ProfileAvatar name={cl.name} photo={cl.photo} size={64} dark/>
+        <PhotoUpload currentPhoto={cl.photo} onUpload={url=>setClients(p=>p.map(c=>c.id===cl.id?{...c,photo:url}:c))}/>
+      </div>
       <div style={{flex:1,minWidth:200}}>
         <div style={{fontFamily:"var(--fd)",fontSize:20,fontWeight:400}}>{cl.name}</div>
         <div style={{fontSize:12,color:"var(--t2)"}}>{cl.age} years old | {cl.addr}</div>
@@ -3383,7 +3430,7 @@ function ClientPortalPage({clients,caregivers,notify,assignments,sel,setSel,serv
     {/* Portal Header */}
     <div style={{background:"#111",color:"#fff",borderRadius:"var(--r)",padding:"24px 28px",marginBottom:16,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
       <div style={{display:"flex",gap:16,alignItems:"center"}}>
-        <div className="avatar" style={{width:56,height:56,fontSize:22,background:"rgba(255,255,255,.12)",color:"#fff"}}>{cl.name.split(" ").map(n=>n[0]).join("")}</div>
+        <ProfileAvatar name={cl.name} photo={cl.photo} size={56} dark/>
         <div>
           <div style={{fontSize:11,textTransform:"uppercase",letterSpacing:1,opacity:.4,marginBottom:2}}>Client Portal</div>
           <div style={{fontFamily:"var(--fd)",fontSize:22,fontWeight:900}}>{cl.name}</div>
@@ -3396,7 +3443,7 @@ function ClientPortalPage({clients,caregivers,notify,assignments,sel,setSel,serv
         </select>
         <div style={{textAlign:"right"}}>
           <div style={{fontSize:10,opacity:.4,textTransform:"uppercase"}}>Care Team</div>
-          <div style={{display:"flex",gap:-4,marginTop:4}}>{assignedCGs.slice(0,3).map((cg,i)=> <div key={cg.id} className="avatar" style={{width:28,height:28,fontSize:9,background:"rgba(255,255,255,.15)",color:"#fff",marginLeft:i>0?-8:0,border:"2px solid #111"}}>{cg.avatar}</div>)}</div>
+          <div style={{display:"flex",gap:-4,marginTop:4}}>{assignedCGs.slice(0,3).map((cg,i)=> <ProfileAvatar key={cg.id} name={cg.name} photo={cg.photo} size={28} dark/>)}</div>
         </div>
       </div>
     </div>
@@ -3458,7 +3505,7 @@ function ClientPortalPage({clients,caregivers,notify,assignments,sel,setSel,serv
       </div>
       <div className="card"><div className="card-h"><h3>My Care Team</h3></div>
         {assignedCGs.map(cg=> <div key={cg.id} style={{padding:"12px 18px",borderBottom:"1px solid var(--bdr)",display:"flex",gap:12,alignItems:"center"}}>
-          <div className="avatar" style={{width:42,height:42,fontSize:14,background:"#111",color:"#fff"}}>{cg.avatar}</div>
+          <ProfileAvatar name={cg.name} photo={cg.photo} size={42} dark/>
           <div style={{flex:1}}><div style={{fontWeight:700,fontSize:14}}>{cg.name}</div><div style={{fontSize:12,color:"var(--t2)"}}>{cg.certs.join(", ")}</div></div>
           <div style={{fontSize:12,color:"var(--t2)"}}>{cg.phone}</div>
         </div>)}
@@ -3542,7 +3589,7 @@ function ClientPortalPage({clients,caregivers,notify,assignments,sel,setSel,serv
       <div className="card"><div className="card-h"><h3>Care Updates from Your Team</h3></div>
         {clNotes.map(n=>{const cg=caregivers.find(c=>c.id===n.caregiverId);return <div key={n.id} style={{padding:"12px 18px",borderBottom:"1px solid var(--bdr)"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-            <div style={{display:"flex",gap:8,alignItems:"center"}}><div className="avatar" style={{width:28,height:28,fontSize:10,background:"#111",color:"#fff"}}>{cg?.avatar}</div><span style={{fontWeight:600,fontSize:13}}>{cg?.name}</span></div>
+            <div style={{display:"flex",gap:8,alignItems:"center"}}><ProfileAvatar name={cg?.name||"?"} photo={cg?.photo} size={28} dark/><span style={{fontWeight:600,fontSize:13}}>{cg?.name}</span></div>
             <span style={{fontSize:11,color:"var(--t2)"}}>{fmtD(n.date)} {fmtT(n.date)}</span>
           </div>
           <span className={`tag ${NOTE_CATS[n.category]?.color||"tag-ok"}`} style={{marginBottom:6,display:"inline-flex"}}>{n.category}</span>
@@ -3837,14 +3884,17 @@ function FamilyPage({clients,familyMsgs,setFamilyMsgs,careNotes,incidents,events
 // ═══════════════════════════════════════════════════════════════════════
 // TEAM
 // ═══════════════════════════════════════════════════════════════════════
-function TeamPage({caregivers,progress}){
+function TeamPage({caregivers,setCaregivers,progress}){
   return <div>
     <div className="hdr"><div><h2>Team</h2><div className="hdr-sub">{caregivers.length} active caregivers</div></div></div>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:14}}>
       {caregivers.map(cg=>{const done=(progress[cg.id]||[]).length;const pct=Math.round(done/TRAINING_MODULES.length*100);
         return <div key={cg.id} className="card card-b">
-          <div style={{display:"flex",gap:14,alignItems:"center",marginBottom:14}}>
-            <div className="avatar" style={{width:52,height:52,fontSize:18,background:"#111",color:"#fff"}}>{cg.avatar}</div>
+          <div style={{display:"flex",gap:14,alignItems:"flex-start",marginBottom:14}}>
+            <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6}}>
+              <ProfileAvatar name={cg.name} photo={cg.photo} size={56} dark/>
+              <PhotoUpload currentPhoto={cg.photo} onUpload={url=>setCaregivers(p=>p.map(c=>c.id===cg.id?{...c,photo:url}:c))}/>
+            </div>
             <div style={{flex:1}}><div style={{fontFamily:"var(--fd)",fontSize:17,fontWeight:400}}>{cg.name}</div><div style={{fontSize:12,color:"var(--t2)"}}>{cg.email}</div><div style={{fontSize:12,color:"var(--t2)"}}>{cg.phone}</div></div>
             <span className="tag tag-ok">Active</span>
           </div>
@@ -4356,11 +4406,11 @@ function BillingPage({invoices,setInvoices,clients,caregivers,rateCards,billingP
     const rc=rateCards.find(r=>r.clientId===clientId);
     const rate=rc?.billRate||35;
     const shifts=(schedules||[]).filter(s=>s.clientId===clientId&&s.date>=period.start&&s.date<=period.end&&s.status==="published");
-    const lines=shifts.map(s=>{const cg=caregivers.find(c=>c.id===s.caregiverId);const hrs=(timeToMin(s.endTime)-timeToMin(s.startTime))/60;return{date:s.date,caregiver:cg?.name||"—",hours:hrs,rate,total:hrs*rate,notes:s.tasks?.slice(0,2).join(", ")||""};});
+    const lines=shifts.map(s=>{const cg=caregivers.find(c=>c.id===s.caregiverId);const hrs=(timeToMin(s.endTime)-timeToMin(s.startTime))/60;const toAMPM=(t)=>{const[h,m]=t.split(":");const hr=parseInt(h);return(hr>12?hr-12:hr||12)+":"+m+" "+(hr>=12?"PM":"AM");};return{date:s.date,caregiver:cg?.name||"—",hours:hrs,rate,total:hrs*rate,signIn:toAMPM(s.startTime),signOut:toAMPM(s.endTime),startTime:s.startTime,endTime:s.endTime,notes:s.tasks?.slice(0,2).join(", ")||""};});
     const subtotal=lines.reduce((s,l)=>s+l.total,0);
     const clExp=expenses.filter(e=>e.clientId===clientId&&e.date>=period.start&&e.date<=period.end&&(e.status==="approved"||e.adminApproved));
     const expTotal=clExp.reduce((s,e)=>s+e.amount,0);
-    const inv={id:`INV-${now().getFullYear()}-${String(invoices.length+1).padStart(3,"0")}`,clientId,periodId,date:today(),dueDate:toISO(addDays(now(),15)),status:"draft",lines,subtotal,expenses:expTotal,tax:0,total:subtotal+expTotal};
+    const inv={id:`INV-${now().getFullYear()}-${String(invoices.length+1).padStart(3,"0")}`,clientId,periodId,date:today(),dueDate:toISO(addDays(now(),15)),status:"draft",lines,subtotal,expenses:expTotal,tax:0,total:subtotal+expTotal,lateFee:0,prevBalance:0,lastPayment:""};
     setInvoices(p=>[inv,...p]);setShowGen(false);
   };
 
@@ -4411,25 +4461,183 @@ function BillingPage({invoices,setInvoices,clients,caregivers,rateCards,billingP
       </tbody></table></div>
     </div>
 
-    {/* Invoice Detail Modal */}
-    {sel&& <div className="modal-bg" onClick={()=>setSel(null)}><div className="modal" style={{maxWidth:700}} onClick={e=>e.stopPropagation()}>
-      <div className="modal-h">{sel.id}<button className="btn btn-sm btn-s" onClick={()=>setSel(null)}>✕</button></div>
-      <div className="modal-b">
-        <div style={{display:"flex",justifyContent:"space-between",marginBottom:20}}>
-          <div><div style={{fontFamily:"var(--fd)",fontSize:20}}>{CO.name}</div><div style={{fontSize:11,color:"var(--t2)"}}>{CO.addr}</div><div style={{fontSize:11,color:"var(--t2)"}}>{CO.phone} | {CO.email}</div></div>
-          <div style={{textAlign:"right"}}><div style={{fontSize:10,textTransform:"uppercase",letterSpacing:1,color:"var(--t2)"}}>Invoice</div><div style={{fontFamily:"monospace",fontSize:16,fontWeight:700}}>{sel.id}</div><div style={{fontSize:11,color:"var(--t2)"}}>Date: {fmtD(sel.date)}</div><div style={{fontSize:11,color:"var(--t2)"}}>Due: {fmtD(sel.dueDate)}</div></div>
+    {/* Invoice Detail Modal — matches CWIN printed invoice format */}
+    {sel&&(()=>{
+      const cl=clients.find(c=>c.id===sel.clientId);
+      const period=billingPeriods.find(b=>b.id===sel.periodId);
+      const dayNames=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+      // Group lines by week
+      const weekLines=[];let curWeek=null;
+      const sortedLines=[...sel.lines].sort((a,b)=>a.date.localeCompare(b.date));
+      // Build full 2-week calendar from period
+      const allDays=[];
+      if(period){
+        let d=new Date(period.start+"T12:00:00");const end=new Date(period.end+"T12:00:00");
+        while(d<=end){const iso=d.toISOString().slice(0,10);allDays.push({date:iso,day:dayNames[d.getDay()]});d=new Date(d.getTime()+86400000);}
+      }else{sortedLines.forEach(l=>allDays.push({date:l.date,day:dayNames[new Date(l.date+"T12:00:00").getDay()]}));}
+      // Assign week numbers
+      let weekNum=Math.ceil(new Date(allDays[0]?.date+"T12:00:00").getDate()/7)||1;
+      let lastSun=-1;
+      const dayRows=allDays.map((d,i)=>{
+        const line=sortedLines.find(l=>l.date===d.date);
+        const isNewWeek=d.day==="Sunday"&&i>0;
+        if(d.day==="Sunday"){weekNum=Math.ceil(new Date(d.date+"T12:00:00").getDate()/7)||weekNum+1;}
+        return{...d,...line,isNewWeek,weekNum,hasVisit:!!line};
+      });
+      // Get unique week numbers
+      const weeks=[...new Set(dayRows.map(r=>r.weekNum))];
+      const clExp=expenses.filter(e=>e.clientId===sel.clientId&&period&&e.date>=period.start&&e.date<=period.end&&(e.status==="approved"||e.adminApproved));
+      const lateFee=sel.lateFee||0;
+      const prevBalance=sel.prevBalance||0;
+      const totalBalance=sel.total+lateFee+prevBalance;
+      const [posted,setPosted]=useState(false);
+
+      const handlePDF=()=>{
+        const el=document.getElementById("cwin-invoice-print");
+        if(!el)return;
+        const w=window.open("","_blank","width=800,height=1100");
+        w.document.write("<html><head><title>Invoice "+sel.id+"</title><style>body{font-family:Arial,sans-serif;font-size:12px;margin:20px;color:#070707}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:5px 8px;text-align:left;font-size:11px}th{background:#f0f0f0;font-weight:700;font-size:10px}h2{margin:0}.inv-hdr{display:flex;justify-content:space-between;margin-bottom:16px}.inv-title{font-size:28px;font-weight:700;color:#333;text-align:right}.meta{font-size:11px;color:#555}.total-row td{font-weight:700;background:#f9f9f9}.week-hdr td{background:#e8e8e8;font-weight:700;font-size:10px;text-transform:uppercase}.remit{border:2px solid #070707;padding:10px;margin-top:16px;font-size:11px}.remit td{border:1px solid #ccc;padding:4px 8px}@media print{body{margin:0}}</style></head><body>");
+        w.document.write(el.innerHTML);
+        w.document.write("</body></html>");
+        w.document.close();
+        setTimeout(()=>{w.print();},500);
+      };
+
+      const handlePost=()=>{setPosted(true);setTimeout(()=>setPosted(false),3000);};
+
+      return <div className="modal-bg" onClick={()=>setSel(null)}><div className="modal" style={{maxWidth:780,maxHeight:"92vh",overflow:"auto"}} onClick={e=>e.stopPropagation()}>
+        <div className="modal-h">
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>Invoice {sel.id}</div>
+          <div style={{display:"flex",gap:6}}>
+            <button className="btn btn-sm btn-ok" onClick={handlePost}>{posted?"✓ Posted!":"📋 Post to Client Profile"}</button>
+            <button className="btn btn-sm btn-p" onClick={handlePDF}>📄 Download PDF</button>
+            <button className="btn btn-sm btn-s" onClick={()=>setSel(null)}>✕</button>
+          </div>
         </div>
-        <div style={{padding:12,background:"var(--bg)",marginBottom:14}}><div style={{fontSize:10,textTransform:"uppercase",color:"var(--t2)",fontWeight:600}}>Bill To</div><div style={{fontWeight:700,fontSize:14,marginTop:2}}>{clients.find(c=>c.id===sel.clientId)?.name}</div><div style={{fontSize:12,color:"var(--t2)"}}>{clients.find(c=>c.id===sel.clientId)?.addr}</div></div>
-        <div className="tw"><table><thead><tr><th>Date</th><th>Caregiver</th><th>Hours</th><th>Rate</th><th style={{textAlign:"right"}}>Amount</th><th>Notes</th></tr></thead><tbody>
-          {sel.lines.map((l,i)=> <tr key={i}><td>{fmtD(l.date)}</td><td>{l.caregiver}</td><td style={{fontWeight:600}}>{l.hours.toFixed(1)}</td><td>{$(l.rate)}/hr</td><td style={{textAlign:"right",fontWeight:600}}>{$(l.total)}</td><td style={{fontSize:11,color:"var(--t2)"}}>{l.notes}</td></tr>)}
-        </tbody></table></div>
-        <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",marginTop:14,gap:4}}>
-          <div style={{display:"flex",gap:30}}><span style={{fontSize:12,color:"var(--t2)"}}>Subtotal</span><span style={{fontSize:12,fontWeight:600}}>{$(sel.subtotal)}</span></div>
-          {sel.expenses>0&&<div style={{display:"flex",gap:30}}><span style={{fontSize:12,color:"var(--t2)"}}>Reimbursable Expenses</span><span style={{fontSize:12,fontWeight:600}}>{$(sel.expenses)}</span></div>}
-          <div style={{display:"flex",gap:30,padding:"8px 0",borderTop:"var(--border-thin)",marginTop:4}}><span style={{fontSize:14,fontWeight:700}}>Total Due</span><span style={{fontFamily:"var(--fd)",fontSize:22,fontWeight:400}}>{$(sel.total)}</span></div>
+        <div className="modal-b" id="cwin-invoice-print">
+          {/* Header */}
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:16,paddingBottom:12,borderBottom:"2px solid #070707"}}>
+            <div>
+              <div style={{fontFamily:"var(--fd)",fontSize:22,fontWeight:700}}>CWIN</div>
+              <div style={{fontSize:10,fontStyle:"italic",color:"var(--t2)"}}>Care When It's Needed</div>
+              <div style={{fontSize:11,color:"var(--t2)",marginTop:4}}>15941 S. Harlem Ave. #305</div>
+              <div style={{fontSize:11,color:"var(--t2)"}}>Tinley Park IL, 60477</div>
+            </div>
+            <div style={{textAlign:"right"}}>
+              <div style={{fontSize:28,fontWeight:700,color:"#333",letterSpacing:2}}>INVOICE</div>
+            </div>
+          </div>
+
+          {/* Contact + Client Info */}
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:14,fontSize:11}}>
+            <div>
+              <div><strong>Telephone:</strong> 708.476.0021</div>
+              <div><strong>Email:</strong> CWINathome@gmail.com</div>
+            </div>
+            <div style={{textAlign:"right"}}>
+              <div style={{fontWeight:700,fontSize:13}}>{cl?.name}</div>
+              <div>{cl?.addr||cl?.address||""}</div>
+            </div>
+          </div>
+
+          {/* Invoice Meta */}
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:14,padding:"8px 12px",background:"#f5f2eb",fontSize:11}}>
+            <div>
+              <div><strong>Invoice #:</strong> {sel.id}</div>
+              <div><strong>Date:</strong> {fmtD(sel.date)}</div>
+              <div><strong>Client ID:</strong> {cl?.id?.slice(0,8)||cl?.shortId||"—"}</div>
+            </div>
+            <div style={{textAlign:"right"}}>
+              <div><strong>Period Beginning:</strong> {period?fmtD(period.start):"—"}</div>
+              <div><strong>Period Ending:</strong> {period?fmtD(period.end):"—"}</div>
+            </div>
+          </div>
+
+          {/* Weekly Time Table */}
+          <div className="tw" style={{marginBottom:14}}>
+            <table style={{fontSize:11}}>
+              <thead><tr style={{background:"#e8e8e8"}}>
+                <th style={{width:90}}>Day</th><th style={{width:90}}>Date</th><th>Description</th>
+                <th style={{width:75}}>Sign IN</th><th style={{width:75}}>Sign OUT</th>
+                <th style={{width:55,textAlign:"center"}}>Hours</th><th style={{width:55,textAlign:"right"}}>Rate</th>
+                <th style={{width:75,textAlign:"right"}}>Total</th>
+              </tr></thead>
+              <tbody>
+                {weeks.map((wk,wi)=>{
+                  const weekDays=dayRows.filter(d=>d.weekNum===wk);
+                  return <React.Fragment key={wk}>
+                    <tr><td colSpan={8} style={{background:"#e8e8e8",fontWeight:700,fontSize:10,padding:"4px 8px"}}>Week {wk}</td></tr>
+                    {weekDays.map((d,di)=>{
+                      const rate=sel.lines[0]?.rate||rateCards.find(r=>r.clientId===sel.clientId)?.billRate||25;
+                      return <tr key={di} style={{background:d.hasVisit?"#fff":"#fafafa"}}>
+                        <td style={{fontWeight:600}}>{d.day}</td>
+                        <td>{d.date?.replace(/-/g,"/").slice(5)||""}</td>
+                        <td>{d.hasVisit?"Home Visit":""}</td>
+                        <td>{d.signIn||d.startTime||(d.hasVisit?"8:00 AM":"")}</td>
+                        <td>{d.signOut||d.endTime||(d.hasVisit?"1:00 PM":"")}</td>
+                        <td style={{textAlign:"center",fontWeight:d.hasVisit?700:400}}>{d.hasVisit?(d.hours||0).toFixed(0)+":"+(((d.hours||0)%1)*60).toFixed(0).padStart(2,"0"):""}</td>
+                        <td style={{textAlign:"right"}}>{rate.toFixed(2)}</td>
+                        <td style={{textAlign:"right",fontWeight:d.hasVisit?600:400}}>{d.hasVisit?"$ "+(d.total||0).toFixed(2):"$ -"}</td>
+                      </tr>;
+                    })}
+                  </React.Fragment>;
+                })}
+                <tr style={{background:"#f0f0f0",fontWeight:700}}>
+                  <td colSpan={4} style={{textAlign:"right"}}>Total Hrs.</td>
+                  <td></td><td style={{textAlign:"center"}}></td><td></td>
+                  <td style={{textAlign:"right",fontSize:13}}>$ {sel.subtotal.toFixed(2)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          {/* Shopping / Expenses List */}
+          {(clExp.length>0||lateFee>0||prevBalance>0)&&<div style={{marginBottom:14}}>
+            <div style={{fontWeight:700,fontSize:12,marginBottom:4}}>Shopping List</div>
+            <div className="tw"><table style={{fontSize:11}}>
+              <thead><tr><th>Date</th><th>Description</th><th style={{textAlign:"right"}}>Amount</th><th></th><th style={{textAlign:"right"}}></th></tr></thead>
+              <tbody>
+                {clExp.map((e,i)=><tr key={i}><td>{fmtD(e.date)}</td><td>{e.description}</td><td style={{textAlign:"right"}}>${e.amount.toFixed(2)}</td><td></td><td style={{textAlign:"right"}}>$ {e.amount.toFixed(2)}</td></tr>)}
+                {prevBalance>0&&<tr><td>{fmtD(sel.date)}</td><td style={{fontStyle:"italic"}}>Previous Invoice (Not Received)</td><td style={{textAlign:"right"}}>${prevBalance.toFixed(2)}</td><td></td><td style={{textAlign:"right"}}>$ {prevBalance.toFixed(2)}</td></tr>}
+                {lateFee>0&&<tr><td></td><td style={{fontWeight:700}}>LATE FEE</td><td style={{textAlign:"right"}}>${lateFee.toFixed(2)}</td><td></td><td style={{textAlign:"right"}}>$ {lateFee.toFixed(2)}</td></tr>}
+              </tbody>
+            </table></div>
+          </div>}
+
+          {/* Total Balance */}
+          <div style={{display:"flex",justifyContent:"flex-end",marginBottom:16}}>
+            <div style={{border:"2px solid #070707",padding:"8px 20px",display:"flex",gap:40,alignItems:"center"}}>
+              <span style={{fontWeight:700,fontSize:13}}>Total Balance</span>
+              <span style={{fontFamily:"var(--fd)",fontSize:22,fontWeight:700}}>${(sel.total+(sel.expenses||0)+lateFee+prevBalance).toFixed(2)}</span>
+            </div>
+          </div>
+
+          {/* Terms */}
+          <div style={{fontSize:10,color:"var(--t2)",marginBottom:14,lineHeight:1.6}}>
+            <div><strong>Reminder:</strong> Please include Invoice number on check</div>
+            <div><strong>QuickPay Zelle:</strong> CWINathome@gmail.com</div>
+            <div><strong>Terms:</strong> Balance Due Biweekly</div>
+            <div><strong>Late Fee:</strong> $30.00 if received 7 days after Invoice date.</div>
+          </div>
+
+          {/* Remittance */}
+          <div style={{border:"2px solid #070707",padding:10,fontSize:11}}>
+            <div style={{fontWeight:700,fontSize:10,textTransform:"uppercase",letterSpacing:1,marginBottom:6,background:"#070707",color:"#fff",padding:"3px 8px",display:"inline-block"}}>REMITTANCE</div>
+            <table style={{width:"100%",borderCollapse:"collapse"}}>
+              <tbody>
+                <tr><td style={{fontWeight:600,padding:"3px 8px",borderBottom:"1px solid #ddd",width:120}}>Name:</td><td style={{padding:"3px 8px",borderBottom:"1px solid #ddd"}}>{cl?.name}</td></tr>
+                <tr><td style={{fontWeight:600,padding:"3px 8px",borderBottom:"1px solid #ddd"}}>Client ID:</td><td style={{padding:"3px 8px",borderBottom:"1px solid #ddd"}}>{cl?.shortId||cl?.id?.slice(0,8)||"—"}</td></tr>
+                <tr><td style={{fontWeight:600,padding:"3px 8px",borderBottom:"1px solid #ddd"}}>Invoice #</td><td style={{padding:"3px 8px",borderBottom:"1px solid #ddd"}}>{sel.id}</td></tr>
+                <tr><td style={{fontWeight:600,padding:"3px 8px",borderBottom:"1px solid #ddd"}}>Date:</td><td style={{padding:"3px 8px",borderBottom:"1px solid #ddd"}}>{fmtD(sel.date)}</td></tr>
+                <tr><td style={{fontWeight:600,padding:"3px 8px",borderBottom:"1px solid #ddd"}}>Amount Due:</td><td style={{padding:"3px 8px",borderBottom:"1px solid #ddd",fontWeight:700}}>${(sel.total+(sel.expenses||0)+lateFee+prevBalance).toFixed(2)}</td></tr>
+                <tr><td style={{fontWeight:600,padding:"3px 8px",borderBottom:"1px solid #ddd"}}>Last Payment:</td><td style={{padding:"3px 8px",borderBottom:"1px solid #ddd",fontStyle:"italic",color:"var(--ok)"}}>{sel.lastPayment||"—"}</td><td style={{padding:"3px 8px",textAlign:"right"}}>{period?.label||""}</td></tr>
+                <tr><td style={{fontWeight:600,padding:"3px 8px"}}>Amount Enclosed:</td><td style={{padding:"3px 8px",borderBottom:"1px solid #070707"}}></td></tr>
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
-    </div></div>}
+      </div></div>;
+    })()}
 
     {/* Generate Invoice Modal */}
     {showGen&& <div className="modal-bg" onClick={()=>setShowGen(false)}><div className="modal" onClick={e=>e.stopPropagation()}>
