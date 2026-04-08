@@ -2921,7 +2921,7 @@ function DashPage({clients,caregivers,incidents,expenses,careNotes,events,traini
 // CLIENT PROFILES
 // ═══════════════════════════════════════════════════════════════════════
 function ClientsPage({clients,setClients,sel,setSel,caregivers,careNotes,incidents,events,chores,expenses,schedules}){
-  const cl=clients.find(c=>c.id===sel)||clients[0];
+  const cl=clients.find(c=>c.id===sel)||clients.filter(c=>c.status!=="archived")[0]||clients[0];
   const [tab,setTab]=useState("overview");
   const [editField,setEditField]=useState(null);
   const [addInput,setAddInput]=useState("");
@@ -2931,6 +2931,17 @@ function ClientsPage({clients,setClients,sel,setSel,caregivers,careNotes,inciden
   const [editEmergency,setEditEmergency]=useState(null);
   const [calMonth,setCalMonth]=useState(now().getMonth());
   const [calYear,setCalYear]=useState(now().getFullYear());
+  const [showAdd,setShowAdd]=useState(false);
+  const [showEdit,setShowEdit]=useState(false);
+  const [showArchived,setShowArchived]=useState(false);
+  const [confirmDelete,setConfirmDelete]=useState(false);
+  const emptyClient={name:"",age:"",addr:"",phone:"",emergency:"",dx:[],meds:[],status:"active",riskLevel:"low",billRate:35,photo:null,adl:{},social:{interests:[]},preferences:{},familyPortal:{enabled:true,contacts:[]}};
+  const [form,setForm]=useState(emptyClient);
+  const [dxInput,setDxInput]=useState("");
+  const [medInput,setMedInput]=useState("");
+
+  const activeClients=showArchived?clients:clients.filter(c=>c.status!=="archived");
+  const archivedCount=clients.filter(c=>c.status==="archived").length;
 
   const clNotes=careNotes.filter(n=>n.clientId===cl.id).sort((a,b)=>new Date(b.date)-new Date(a.date));
   const clInc=incidents.filter(i=>i.clientId===cl.id);
@@ -2968,9 +2979,13 @@ function ClientsPage({clients,setClients,sel,setSel,caregivers,careNotes,inciden
 
   return <div>
     <div className="hdr"><div><h2>Client Profiles</h2><div className="hdr-sub">Comprehensive health, social, and care data</div></div>
-      <select value={sel} onChange={e=>setSel(e.target.value)} style={{padding:"8px 12px",border:"var(--border-thin)",fontFamily:"var(--f)",fontWeight:600}}>
-        {clients.map(c=> <option key={c.id} value={c.id}>{c.name}</option>)}
-      </select>
+      <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+        <label style={{fontSize:10,display:"flex",alignItems:"center",gap:4,cursor:"pointer"}}><input type="checkbox" checked={showArchived} onChange={e=>setShowArchived(e.target.checked)}/> Show archived ({archivedCount})</label>
+        <select value={sel} onChange={e=>setSel(e.target.value)} style={{padding:"8px 12px",border:"var(--border-thin)",fontFamily:"var(--f)",fontWeight:600}}>
+          {activeClients.map(c=> <option key={c.id} value={c.id}>{c.name}{c.status==="archived"?" (archived)":""}</option>)}
+        </select>
+        <button className="btn btn-p btn-sm" onClick={()=>{setForm(emptyClient);setDxInput("");setMedInput("");setShowAdd(true);}}>+ Add Client</button>
+      </div>
     </div>
 
     {/* Client Header */}
@@ -2987,6 +3002,14 @@ function ClientsPage({clients,setClients,sel,setSel,caregivers,careNotes,inciden
           {cl.dx.slice(0,3).map((d,i)=> <span key={i} className="tag tag-bl">{d}</span>)}
           {cl.dx.length>3&& <span className="tag tag-bl">+{cl.dx.length-3}</span>}
         </div>
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:4}}>
+        <button className="btn btn-sm btn-s" onClick={()=>{setForm({...cl});setDxInput("");setMedInput("");setShowEdit(true);}}>✏️ Edit</button>
+        {cl.status==="active"?
+          <button className="btn btn-sm btn-s" style={{color:"var(--ochre)"}} onClick={()=>setClients(p=>p.map(c=>c.id===cl.id?{...c,status:"archived"}:c))}>📦 Archive</button>
+          :<button className="btn btn-sm btn-ok" onClick={()=>setClients(p=>p.map(c=>c.id===cl.id?{...c,status:"active"}:c))}>♻️ Restore</button>
+        }
+        <button className="btn btn-sm btn-s" style={{color:"var(--err)"}} onClick={()=>setConfirmDelete(true)}>🗑 Delete</button>
       </div>
       <div style={{textAlign:"right"}}><div style={{fontSize:10,color:"var(--t2)",textTransform:"uppercase"}}>Bill Rate</div><div style={{fontFamily:"var(--fd)",fontSize:22,fontWeight:400}}>${cl.billRate}/hr</div></div>
     </div>
@@ -3204,6 +3227,68 @@ function ClientsPage({clients,setClients,sel,setSel,caregivers,careNotes,inciden
       </div>;})}
       {clNotes.length===0&& <div className="empty">No care notes yet</div>}
     </div>}
+
+    {/* Add/Edit Client Modal */}
+    {(showAdd||showEdit)&& <div className="modal-bg" onClick={()=>{setShowAdd(false);setShowEdit(false);}}><div className="modal" style={{maxWidth:600,maxHeight:"90vh",overflow:"auto"}} onClick={e=>e.stopPropagation()}>
+      <div className="modal-h">{showAdd?"Add New Client":"Edit Client"}<button className="btn btn-sm btn-s" onClick={()=>{setShowAdd(false);setShowEdit(false);}}>✕</button></div>
+      <div className="modal-b">
+        <div className="fg" style={{marginBottom:12}}>
+          <div className="fi"><label>Full Name *</label><input value={form.name||""} onChange={e=>setForm(p=>({...p,name:e.target.value}))} placeholder="e.g. John Smith"/></div>
+          <div className="fi"><label>Age</label><input type="number" value={form.age||""} onChange={e=>setForm(p=>({...p,age:parseInt(e.target.value)||""}))} placeholder="e.g. 75"/></div>
+        </div>
+        <div className="fg" style={{marginBottom:12}}>
+          <div className="fi"><label>Address</label><input value={form.addr||form.address||""} onChange={e=>setForm(p=>({...p,addr:e.target.value}))} placeholder="e.g. 123 Main St, Chicago IL 60601"/></div>
+          <div className="fi"><label>Phone</label><input value={form.phone||""} onChange={e=>setForm(p=>({...p,phone:e.target.value}))} placeholder="e.g. 312-555-0100"/></div>
+        </div>
+        <div className="fg" style={{marginBottom:12}}>
+          <div className="fi"><label>Emergency Contact</label><input value={form.emergency||""} onChange={e=>setForm(p=>({...p,emergency:e.target.value}))} placeholder="e.g. Jane Smith (daughter) 312-555-0101"/></div>
+          <div className="fi"><label>Bill Rate ($/hr)</label><input type="number" value={form.billRate||""} onChange={e=>setForm(p=>({...p,billRate:parseFloat(e.target.value)||0}))} placeholder="35"/></div>
+        </div>
+        <div className="fg" style={{marginBottom:12}}>
+          <div className="fi"><label>Risk Level</label><select value={form.riskLevel||"low"} onChange={e=>setForm(p=>({...p,riskLevel:e.target.value}))}><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></div>
+          <div className="fi"><label>Status</label><select value={form.status||"active"} onChange={e=>setForm(p=>({...p,status:e.target.value}))}><option value="active">Active</option><option value="pending">Pending</option><option value="inactive">Inactive</option><option value="discharged">Discharged</option></select></div>
+        </div>
+        {/* Diagnoses */}
+        <div style={{marginBottom:12}}>
+          <label style={{fontSize:11,fontWeight:600,textTransform:"uppercase",letterSpacing:.5,display:"block",marginBottom:4}}>Diagnoses</label>
+          <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:6}}>{(form.dx||[]).map((d,i)=><span key={i} className="tag tag-bl" style={{cursor:"pointer"}} onClick={()=>setForm(p=>({...p,dx:p.dx.filter((_,j)=>j!==i)}))}>{d} ✕</span>)}</div>
+          <div style={{display:"flex",gap:4}}><input value={dxInput} onChange={e=>setDxInput(e.target.value)} placeholder="Add diagnosis" onKeyDown={e=>{if(e.key==="Enter"&&dxInput.trim()){setForm(p=>({...p,dx:[...(p.dx||[]),dxInput.trim()]}));setDxInput("");}}} style={{flex:1}}/><button className="btn btn-sm btn-s" onClick={()=>{if(dxInput.trim()){setForm(p=>({...p,dx:[...(p.dx||[]),dxInput.trim()]}));setDxInput("");}}}>Add</button></div>
+        </div>
+        {/* Medications */}
+        <div style={{marginBottom:12}}>
+          <label style={{fontSize:11,fontWeight:600,textTransform:"uppercase",letterSpacing:.5,display:"block",marginBottom:4}}>Medications</label>
+          <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:6}}>{(form.meds||[]).map((m,i)=><span key={i} className="tag tag-wn" style={{cursor:"pointer"}} onClick={()=>setForm(p=>({...p,meds:p.meds.filter((_,j)=>j!==i)}))}>{m} ✕</span>)}</div>
+          <div style={{display:"flex",gap:4}}><input value={medInput} onChange={e=>setMedInput(e.target.value)} placeholder="Add medication" onKeyDown={e=>{if(e.key==="Enter"&&medInput.trim()){setForm(p=>({...p,meds:[...(p.meds||[]),medInput.trim()]}));setMedInput("");}}} style={{flex:1}}/><button className="btn btn-sm btn-s" onClick={()=>{if(medInput.trim()){setForm(p=>({...p,meds:[...(p.meds||[]),medInput.trim()]}));setMedInput("");}}}>Add</button></div>
+        </div>
+        <button className="btn btn-p" style={{width:"100%"}} disabled={!form.name?.trim()} onClick={()=>{
+          if(showAdd){
+            const newId="CL"+uid();
+            const newClient={...emptyClient,...form,id:newId,dx:form.dx||[],meds:form.meds||[]};
+            setClients(p=>[...p,newClient]);
+            setSel(newId);
+            setShowAdd(false);
+          }else{
+            setClients(p=>p.map(c=>c.id===form.id?{...c,...form}:c));
+            setShowEdit(false);
+          }
+        }}>{showAdd?"Add Client":"Save Changes"}</button>
+      </div>
+    </div></div>}
+
+    {/* Delete Confirmation */}
+    {confirmDelete&& <div className="modal-bg" onClick={()=>setConfirmDelete(false)}><div className="modal" style={{maxWidth:400}} onClick={e=>e.stopPropagation()}>
+      <div className="modal-h">Delete Client<button className="btn btn-sm btn-s" onClick={()=>setConfirmDelete(false)}>✕</button></div>
+      <div className="modal-b" style={{textAlign:"center"}}>
+        <div style={{fontSize:40,marginBottom:12}}>⚠️</div>
+        <div style={{fontWeight:700,fontSize:16,marginBottom:8}}>Delete {cl.name}?</div>
+        <div style={{fontSize:12,color:"var(--t2)",marginBottom:16}}>This will permanently remove this client and all associated data. This action cannot be undone. Consider archiving instead.</div>
+        <div style={{display:"flex",gap:8,justifyContent:"center"}}>
+          <button className="btn btn-s" onClick={()=>setConfirmDelete(false)}>Cancel</button>
+          <button className="btn btn-sm" style={{background:"var(--ochre)",color:"#fff"}} onClick={()=>{setClients(p=>p.map(c=>c.id===cl.id?{...c,status:"archived"}:c));setConfirmDelete(false);}}>Archive Instead</button>
+          <button className="btn btn-sm" style={{background:"var(--err)",color:"#fff"}} onClick={()=>{setClients(p=>p.filter(c=>c.id!==cl.id));setSel(clients[0]?.id||"");setConfirmDelete(false);}}>Delete Permanently</button>
+        </div>
+      </div>
+    </div></div>}
   </div>;
 }
 
