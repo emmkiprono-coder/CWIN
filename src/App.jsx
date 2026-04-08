@@ -2573,7 +2573,7 @@ export default function App(){
       {pg==="billing"&&<BillingPage invoices={invoices} setInvoices={setInvoices} clients={clients} caregivers={caregivers} rateCards={rateCards} billingPeriods={billingPeriods} setBillingPeriods={setBillingPeriods} schedules={schedules} expenses={expenses}/>}
       {pg==="payroll"&&<PayrollPage paySlips={paySlips} setPaySlips={setPaySlips} caregivers={caregivers} clients={clients} payCards={payCards} billingPeriods={billingPeriods} schedules={schedules} expenses={expenses} rateCards={rateCards}/>}
       {pg==="rates"&&<RateCardsPage rateCards={rateCards} setRateCards={setRateCards} payCards={payCards} setPayCards={setPayCards} clients={clients} caregivers={caregivers}/>}
-      {pg==="recruiting"&&<RecruitingPage applicants={cgApplicants} setApplicants={setCGApplicants} leads={clientLeads} setLeads={setClientLeads}/>}
+      {pg==="recruiting"&&<RecruitingPage applicants={cgApplicants} setApplicants={setCGApplicants} leads={clientLeads} setLeads={setClientLeads} clients={clients} setClients={setClients} caregivers={caregivers} setCaregivers={setCaregivers} setSel={setSelClient} setPg={setPg}/>}
       {pg==="marketing"&&<MarketingPage campaigns={campaigns} setCampaigns={setCampaigns} leads={clientLeads} applicants={cgApplicants}/>}
       {pg==="compliance"&&<CompliancePage items={compliance} setItems={setCompliance} caregivers={caregivers} clients={clients}/>}
       {pg==="training"&&<TrainingPage caregivers={caregivers} progress={trainingProgress} setProgress={setTrainingProgress} modal={modal} setModal={setModal}/>}
@@ -4286,80 +4286,304 @@ function ReconPage({entries,caregivers,clients}){
 // ═══════════════════════════════════════════════════════════════════════
 // RECRUITING — Caregiver & Client
 // ═══════════════════════════════════════════════════════════════════════
-function RecruitingPage({applicants,setApplicants,leads,setLeads}){
+function RecruitingPage({applicants,setApplicants,leads,setLeads,clients,setClients,caregivers,setCaregivers,setSel,setPg}){
   const [tab,setTab]=useState("caregivers");
-  const stages={new:"New",screening:"Screening",interview:"Interview",offer:"Offer Extended",hired:"Hired",rejected:"Rejected"};
-  const clStages={new:"New Lead",inquiry:"Inquiry",assessment:"Assessment",proposal:"Proposal Sent",active:"Active Client",lost:"Lost"};
+  const [showAddAp,setShowAddAp]=useState(false);
+  const [showAddLd,setShowAddLd]=useState(false);
+  const [selAp,setSelAp]=useState(null);
+  const [selLd,setSelLd]=useState(null);
+  const [noteInput,setNoteInput]=useState("");
+  const [showOnboard,setShowOnboard]=useState(null);
+  const stages={new:"New",screening:"Screening",phone_screen:"Phone Screen",interview:"Interview",reference_check:"Reference Check",offer:"Offer Extended",hired:"Hired",rejected:"Rejected",withdrawn:"Withdrawn"};
+  const clStages={new:"New Lead",inquiry:"Inquiry",assessment:"Assessment",proposal:"Proposal Sent",active:"Active Client",declined:"Declined"};
+  const stageColors={new:"tag-pu",screening:"tag-bl",phone_screen:"tag-bl",interview:"tag-wn",reference_check:"tag-wn",offer:"tag-ok",hired:"tag-ok",rejected:"tag-er",withdrawn:"tag-er"};
+  const clColors={new:"tag-pu",inquiry:"tag-bl",assessment:"tag-wn",proposal:"tag-ok",active:"tag-ok",declined:"tag-er"};
+
+  // Empty forms
+  const emptyAp={name:"",email:"",phone:"",certs:[],experience:"",availability:"Full-time",preferredAreas:[],status:"new",appliedDate:today(),notes:"",bgCheck:"not_started",source:"",score:null,activityLog:[]};
+  const emptyLd={name:"",age:"",phone:"",email:"",referralSource:"",needs:"",hoursNeeded:"",status:"new",assessmentDate:"",notes:"",urgency:"medium",activityLog:[]};
+  const [apForm,setApForm]=useState(emptyAp);
+  const [ldForm,setLdForm]=useState(emptyLd);
+  const [certInput,setCertInput]=useState("");
+  const [areaInput,setAreaInput]=useState("");
+
+  // AI Score (simple rule-based)
+  const calcScore=(ap)=>{
+    let s=50;
+    if(ap.certs?.length>=3)s+=15;else if(ap.certs?.length>=2)s+=10;else if(ap.certs?.length>=1)s+=5;
+    if(ap.experience?.includes("7")||ap.experience?.includes("8")||ap.experience?.includes("10"))s+=15;
+    else if(ap.experience?.includes("3")||ap.experience?.includes("4")||ap.experience?.includes("5"))s+=10;
+    else if(ap.experience?.includes("1")||ap.experience?.includes("2"))s+=5;
+    if(ap.bgCheck==="passed")s+=10;
+    if(ap.certs?.some(c=>c.toLowerCase().includes("dementia")||c.toLowerCase().includes("wound")||c.toLowerCase().includes("parkinson")))s+=10;
+    return Math.min(100,s);
+  };
+
+  // Add activity to log
+  const addActivity=(list,setList,id,text)=>{
+    setList(p=>p.map(a=>a.id===id?{...a,activityLog:[...(a.activityLog||[]),{date:now().toISOString(),text}]}:a));
+  };
+
+  // Move stage with activity logging
+  const moveApStage=(id,newStatus,note)=>{
+    setApplicants(p=>p.map(a=>a.id===id?{...a,status:newStatus,activityLog:[...(a.activityLog||[]),{date:now().toISOString(),text:note||`Moved to ${stages[newStatus]}`}]}:a));
+  };
+  const moveLdStage=(id,newStatus,note)=>{
+    setLeads(p=>p.map(l=>l.id===id?{...l,status:newStatus,activityLog:[...(l.activityLog||[]),{date:now().toISOString(),text:note||`Moved to ${clStages[newStatus]}`}]}:l));
+  };
+
+  // Convert hired applicant to caregiver
+  const convertToCaregiver=(ap)=>{
+    const newId="CG"+uid();
+    const newCG={id:newId,shortId:newId,name:ap.name,email:ap.email,phone:ap.phone,rate:20,certs:ap.certs||[],hireDate:today(),photo:null,avatar:ap.name.split(" ").map(n=>n[0]).join(""),status:"active",trainingComplete:0,trainingTotal:12};
+    setCaregivers(p=>[...p,newCG]);
+    addActivity(applicants,setApplicants,ap.id,"✅ Converted to caregiver record: "+newId);
+    return newId;
+  };
+
+  // Convert active lead to client
+  const convertToClient=(ld)=>{
+    const newId="CL"+uid();
+    const newClient={id:newId,shortId:newId,name:ld.name,age:parseInt(ld.age)||0,addr:"",phone:ld.phone,emergency:"",dx:[],meds:[],adl:{},social:{interests:[]},preferences:{},familyPortal:{enabled:true,contacts:[]},status:"active",riskLevel:"low",billRate:35,photo:null};
+    setClients(p=>[...p,newClient]);
+    addActivity(leads,setLeads,ld.id,"✅ Converted to client record: "+newId);
+    if(setSel)setSel(newId);
+    return newId;
+  };
+
+  // Onboarding checklist items
+  const onboardItems=["Background check completed","W-4 / W-9 signed","I-9 Employment Verification","Direct deposit form","HIPAA training completed","CPR/BLS certification verified","TB test results on file","Orientation completed","First client assignment","Emergency contact form","Vehicle insurance (if driving)","Uniform / ID badge issued"];
 
   return <div>
-    <div className="hdr"><div><h2>Recruiting</h2><div className="hdr-sub">Caregiver pipeline & client acquisition</div></div></div>
+    <div className="hdr"><div><h2>Recruiting</h2><div className="hdr-sub">Caregiver pipeline & client acquisition</div></div>
+      <div style={{display:"flex",gap:6}}>
+        {tab==="caregivers"&&<button className="btn btn-p btn-sm" onClick={()=>{setApForm(emptyAp);setCertInput("");setAreaInput("");setShowAddAp(true);}}>+ Add Applicant</button>}
+        {tab==="clients"&&<button className="btn btn-p btn-sm" onClick={()=>{setLdForm(emptyLd);setShowAddLd(true);}}>+ Add Lead</button>}
+      </div>
+    </div>
     <div className="tab-row">
       <button className={`tab-btn ${tab==="caregivers"?"act":""}`} onClick={()=>setTab("caregivers")}>👩‍⚕️ Caregiver Pipeline ({applicants.length})</button>
       <button className={`tab-btn ${tab==="clients"?"act":""}`} onClick={()=>setTab("clients")}>🏠 Client Leads ({leads.length})</button>
     </div>
 
+    {/* ═══ CAREGIVER PIPELINE ═══ */}
     {tab==="caregivers"&& <div>
-      {/* Pipeline Stats */}
       <div className="sg">
-        {["new","screening","interview","offer"].map(s=> <div key={s} className={`sc ${s==="offer"?"ok":s==="new"?"bl":"wn"}`}><span className="sl">{stages[s]}</span><span className="sv">{applicants.filter(a=>a.status===s).length}</span></div>)}
+        {["new","screening","interview","offer","hired"].map(s=> <div key={s} className={`sc ${s==="hired"?"ok":s==="offer"?"ok":s==="new"?"pu":"bl"}`}><span className="sl">{stages[s]}</span><span className="sv">{applicants.filter(a=>a.status===s).length}</span></div>)}
       </div>
 
-      {/* Applicant Cards */}
-      {applicants.map(ap=> <div key={ap.id} className="card card-b" style={{borderLeft:`4px solid ${ap.status==="offer"?"var(--ok)":ap.status==="interview"?"var(--blue)":ap.status==="new"?"var(--purple)":"var(--warn)"}`}}>
+      {applicants.filter(a=>a.status!=="rejected"&&a.status!=="withdrawn").map(ap=> <div key={ap.id} className="card card-b" style={{borderLeft:`4px solid ${ap.status==="hired"?"var(--ok)":ap.status==="offer"?"#3c4f3d":ap.status==="interview"?"var(--blue)":ap.status==="new"?"var(--purple)":"var(--warn)"}`}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
-          <div><div style={{fontFamily:"var(--fd)",fontSize:16,fontWeight:400}}>{ap.name}</div><div style={{fontSize:12,color:"var(--t2)"}}>{ap.email} • {ap.phone}</div></div>
-          <div style={{display:"flex",gap:4}}><span className={`tag ${ap.status==="offer"?"tag-ok":ap.status==="interview"?"tag-bl":"tag-wn"}`}>{stages[ap.status]}</span>
-            {ap.bgCheck==="passed"&&<span className="tag tag-ok">BG ✓</span>}{ap.bgCheck==="pending"&&<span className="tag tag-wn">BG Pending</span>}</div>
+          <div>
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              <span style={{fontFamily:"var(--fd)",fontSize:16,fontWeight:400}}>{ap.name}</span>
+              {ap.score!=null&&<span style={{background:ap.score>=75?"var(--ok)":ap.score>=50?"var(--warn)":"var(--err)",color:"#fff",padding:"1px 8px",fontSize:10,fontWeight:700}}>{ap.score}/100</span>}
+            </div>
+            <div style={{fontSize:12,color:"var(--t2)"}}>{ap.email} • {ap.phone}</div>
+          </div>
+          <div style={{display:"flex",gap:4}}>
+            <span className={`tag ${stageColors[ap.status]||"tag-bl"}`}>{stages[ap.status]}</span>
+            {ap.bgCheck==="passed"&&<span className="tag tag-ok">BG ✓</span>}
+            {ap.bgCheck==="pending"&&<span className="tag tag-wn">BG Pending</span>}
+          </div>
         </div>
-        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>{ap.certs.map(c=> <span key={c} className="tag tag-bl">{c}</span>)}</div>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>{(ap.certs||[]).map(c=> <span key={c} className="tag tag-bl">{c}</span>)}</div>
         <div style={{fontSize:12,color:"var(--t2)",lineHeight:1.6,marginBottom:8}}>
           <div><strong>Experience:</strong> {ap.experience}</div>
-          <div><strong>Availability:</strong> {ap.availability} • Areas: {ap.preferredAreas.join(", ")}</div>
+          <div><strong>Availability:</strong> {ap.availability} • Areas: {(ap.preferredAreas||[]).join(", ")}</div>
           <div><strong>Source:</strong> {ap.source} • Applied: {fmtD(ap.appliedDate)}</div>
-          {ap.notes&& <div style={{marginTop:4,padding:"6px 10px",background:"var(--bg)",borderRadius:"var(--rs)"}}>{ap.notes}</div>}
+          {ap.notes&& <div style={{marginTop:4,padding:"6px 10px",background:"var(--bg)"}}>{ap.notes}</div>}
         </div>
-        <div style={{display:"flex",gap:6}}>
-          {ap.status==="new"&&<button className="btn btn-sm btn-bl" onClick={()=>setApplicants(p=>p.map(a=>a.id===ap.id?{...a,status:"screening"}:a))}>Start Screening</button>}
-          {ap.status==="screening"&&<button className="btn btn-sm btn-bl" onClick={()=>setApplicants(p=>p.map(a=>a.id===ap.id?{...a,status:"interview"}:a))}>Schedule Interview</button>}
-          {ap.status==="interview"&&<button className="btn btn-sm btn-ok" onClick={()=>setApplicants(p=>p.map(a=>a.id===ap.id?{...a,status:"offer"}:a))}>Extend Offer</button>}
-          {ap.status==="offer"&&<button className="btn btn-sm btn-ok" onClick={()=>setApplicants(p=>p.map(a=>a.id===ap.id?{...a,status:"hired"}:a))}>Mark Hired</button>}
-          <button className="btn btn-sm btn-s">📝 Notes</button>
+
+        {/* Activity Log */}
+        {(ap.activityLog||[]).length>0&&<div style={{marginBottom:8,padding:"6px 10px",background:"#f9f9f4",fontSize:11}}>
+          <div style={{fontWeight:700,fontSize:10,textTransform:"uppercase",marginBottom:4}}>Activity Log</div>
+          {(ap.activityLog||[]).slice(-3).map((a,i)=><div key={i} style={{color:"var(--t2)"}}>{new Date(a.date).toLocaleDateString()} — {a.text}</div>)}
+        </div>}
+
+        {/* Stage Actions */}
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+          {ap.status==="new"&&<><button className="btn btn-sm btn-bl" onClick={()=>moveApStage(ap.id,"screening","Started screening")}>Start Screening</button><button className="btn btn-sm btn-s" onClick={()=>{const s=calcScore(ap);setApplicants(p=>p.map(a=>a.id===ap.id?{...a,score:s,activityLog:[...(a.activityLog||[]),{date:now().toISOString(),text:`AI Score: ${s}/100`}]}:a));}}>🤖 AI Score</button></>}
+          {ap.status==="screening"&&<><button className="btn btn-sm btn-bl" onClick={()=>moveApStage(ap.id,"phone_screen","Phone screen scheduled")}>Phone Screen</button></>}
+          {ap.status==="phone_screen"&&<button className="btn btn-sm btn-bl" onClick={()=>moveApStage(ap.id,"interview","Interview scheduled")}>Schedule Interview</button>}
+          {ap.status==="interview"&&<><button className="btn btn-sm btn-bl" onClick={()=>moveApStage(ap.id,"reference_check","Checking references")}>Check References</button><button className="btn btn-sm btn-ok" onClick={()=>moveApStage(ap.id,"offer","Offer extended")}>Extend Offer</button></>}
+          {ap.status==="reference_check"&&<button className="btn btn-sm btn-ok" onClick={()=>moveApStage(ap.id,"offer","Offer extended, references cleared")}>Extend Offer</button>}
+          {ap.status==="offer"&&<button className="btn btn-sm btn-ok" onClick={()=>{moveApStage(ap.id,"hired","Accepted offer — HIRED!");setShowOnboard(ap.id);}}>✅ Mark Hired</button>}
+          {ap.status==="hired"&&<><button className="btn btn-sm btn-ok" onClick={()=>{convertToCaregiver(ap);}}>🔄 Convert to Caregiver</button><button className="btn btn-sm btn-s" onClick={()=>setShowOnboard(ap.id)}>📋 Onboarding</button></>}
+          <button className="btn btn-sm btn-s" onClick={()=>setSelAp(ap)}>📝 Notes</button>
+          <button className="btn btn-sm btn-s" onClick={()=>{setApForm({...ap});setShowAddAp(true);}}>✏️ Edit</button>
+          {ap.status!=="hired"&&<button className="btn btn-sm btn-s" style={{color:"var(--err)"}} onClick={()=>moveApStage(ap.id,"rejected","Rejected")}>✕ Reject</button>}
+          {ap.status!=="hired"&&<button className="btn btn-sm btn-s" style={{color:"var(--ochre)"}} onClick={()=>moveApStage(ap.id,"withdrawn","Withdrawn")}>Archive</button>}
         </div>
       </div>)}
+
+      {/* Rejected/Withdrawn */}
+      {applicants.filter(a=>a.status==="rejected"||a.status==="withdrawn").length>0&&<details style={{marginTop:14}}><summary style={{cursor:"pointer",fontSize:12,color:"var(--t2)",fontWeight:600}}>Rejected / Withdrawn ({applicants.filter(a=>a.status==="rejected"||a.status==="withdrawn").length})</summary>
+        {applicants.filter(a=>a.status==="rejected"||a.status==="withdrawn").map(ap=><div key={ap.id} style={{padding:"10px 16px",borderBottom:"var(--border-thin)",opacity:.6,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div><span style={{fontWeight:600}}>{ap.name}</span><span style={{fontSize:11,color:"var(--t2)",marginLeft:8}}>{ap.source} • {fmtD(ap.appliedDate)}</span></div>
+          <div style={{display:"flex",gap:4}}><span className={`tag ${stageColors[ap.status]}`}>{stages[ap.status]}</span><button className="btn btn-sm btn-s" onClick={()=>moveApStage(ap.id,"new","Restored to pipeline")}>Restore</button></div>
+        </div>)}
+      </details>}
     </div>}
 
+    {/* ═══ CLIENT LEADS ═══ */}
     {tab==="clients"&& <div>
       <div className="sg">
-        {["new","inquiry","assessment","proposal"].map(s=> <div key={s} className={`sc ${s==="proposal"?"ok":s==="new"?"pu":"bl"}`}><span className="sl">{clStages[s]}</span><span className="sv">{leads.filter(l=>l.status===s).length}</span></div>)}
+        {["new","inquiry","assessment","proposal","active"].map(s=> <div key={s} className={`sc ${s==="active"?"ok":s==="proposal"?"ok":s==="new"?"pu":"bl"}`}><span className="sl">{clStages[s]||s}</span><span className="sv">{leads.filter(l=>l.status===s).length}</span></div>)}
       </div>
 
-      {leads.map(ld=> <div key={ld.id} className="card card-b" style={{borderLeft:`4px solid ${ld.urgency==="high"?"var(--err)":"var(--warn)"}`}}>
+      {leads.filter(l=>l.status!=="declined").map(ld=> <div key={ld.id} className="card card-b" style={{borderLeft:`4px solid ${ld.status==="active"?"var(--ok)":ld.urgency==="high"?"var(--err)":"var(--warn)"}`}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
-          <div><div style={{fontFamily:"var(--fd)",fontSize:16,fontWeight:400}}>{ld.name}</div><div style={{fontSize:12,color:"var(--t2)"}}>Age {ld.age} • {ld.phone}</div></div>
-          <div style={{display:"flex",gap:4}}><span className={`tag ${ld.status==="proposal"?"tag-ok":ld.status==="assessment"?"tag-bl":"tag-wn"}`}>{clStages[ld.status]}</span>
+          <div><div style={{fontFamily:"var(--fd)",fontSize:16,fontWeight:400}}>{ld.name}</div><div style={{fontSize:12,color:"var(--t2)"}}>Age {ld.age} • {ld.phone}{ld.email?" • "+ld.email:""}</div></div>
+          <div style={{display:"flex",gap:4}}><span className={`tag ${clColors[ld.status]||"tag-bl"}`}>{clStages[ld.status]||ld.status}</span>
             <span className={`tag ${ld.urgency==="high"?"tag-er":"tag-wn"}`}>{ld.urgency} urgency</span></div>
         </div>
-        <div style={{fontSize:12,color:"var(--t2)",lineHeight:1.7}}>
+        <div style={{fontSize:12,color:"var(--t2)",lineHeight:1.7,marginBottom:8}}>
           <div><strong>Referral:</strong> {ld.referralSource}</div>
           <div><strong>Needs:</strong> {ld.needs}</div>
           <div><strong>Hours:</strong> {ld.hoursNeeded}</div>
           {ld.assessmentDate&& <div><strong>Assessment:</strong> {fmtD(ld.assessmentDate)}</div>}
-          {ld.notes&& <div style={{marginTop:4,padding:"6px 10px",background:"var(--bg)",borderRadius:"var(--rs)"}}>{ld.notes}</div>}
+          {ld.notes&& <div style={{marginTop:4,padding:"6px 10px",background:"var(--bg)"}}>{ld.notes}</div>}
         </div>
-        <div style={{display:"flex",gap:6,marginTop:8}}>
-          {ld.status==="new"&&<button className="btn btn-sm btn-bl" onClick={()=>setLeads(p=>p.map(l=>l.id===ld.id?{...l,status:"inquiry"}:l))}>Contact</button>}
-          {ld.status==="inquiry"&&<button className="btn btn-sm btn-bl" onClick={()=>setLeads(p=>p.map(l=>l.id===ld.id?{...l,status:"assessment"}:l))}>Schedule Assessment</button>}
-          {ld.status==="assessment"&&<button className="btn btn-sm btn-ok" onClick={()=>setLeads(p=>p.map(l=>l.id===ld.id?{...l,status:"proposal"}:l))}>Send Proposal</button>}
-          {ld.status==="proposal"&&<button className="btn btn-sm btn-ok" onClick={()=>setLeads(p=>p.map(l=>l.id===ld.id?{...l,status:"active"}:l))}>Convert to Client</button>}
+
+        {(ld.activityLog||[]).length>0&&<div style={{marginBottom:8,padding:"6px 10px",background:"#f9f9f4",fontSize:11}}>
+          <div style={{fontWeight:700,fontSize:10,textTransform:"uppercase",marginBottom:4}}>Activity Log</div>
+          {(ld.activityLog||[]).slice(-3).map((a,i)=><div key={i} style={{color:"var(--t2)"}}>{new Date(a.date).toLocaleDateString()} — {a.text}</div>)}
+        </div>}
+
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+          {ld.status==="new"&&<button className="btn btn-sm btn-bl" onClick={()=>moveLdStage(ld.id,"inquiry","Initial contact made")}>Contact</button>}
+          {ld.status==="inquiry"&&<button className="btn btn-sm btn-bl" onClick={()=>moveLdStage(ld.id,"assessment","Assessment scheduled")}>Schedule Assessment</button>}
+          {ld.status==="assessment"&&<button className="btn btn-sm btn-ok" onClick={()=>moveLdStage(ld.id,"proposal","Proposal sent to family")}>Send Proposal</button>}
+          {ld.status==="proposal"&&<button className="btn btn-sm btn-ok" onClick={()=>{moveLdStage(ld.id,"active","Converted to active client!");convertToClient(ld);}}>✅ Convert to Client</button>}
+          {ld.status==="active"&&<button className="btn btn-sm btn-ok" onClick={()=>{if(setPg)setPg("clients");}}>View Client Profile</button>}
+          <button className="btn btn-sm btn-s" onClick={()=>setSelLd(ld)}>📝 Notes</button>
+          <button className="btn btn-sm btn-s" onClick={()=>{setLdForm({...ld});setShowAddLd(true);}}>✏️ Edit</button>
+          {ld.status!=="active"&&<button className="btn btn-sm btn-s" style={{color:"var(--err)"}} onClick={()=>moveLdStage(ld.id,"declined","Lead declined")}>✕ Decline</button>}
         </div>
       </div>)}
+
+      {leads.filter(l=>l.status==="declined").length>0&&<details style={{marginTop:14}}><summary style={{cursor:"pointer",fontSize:12,color:"var(--t2)",fontWeight:600}}>Declined ({leads.filter(l=>l.status==="declined").length})</summary>
+        {leads.filter(l=>l.status==="declined").map(ld=><div key={ld.id} style={{padding:"10px 16px",borderBottom:"var(--border-thin)",opacity:.6,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div><span style={{fontWeight:600}}>{ld.name}</span><span style={{fontSize:11,color:"var(--t2)",marginLeft:8}}>{ld.referralSource}</span></div>
+          <div style={{display:"flex",gap:4}}><span className="tag tag-er">Declined</span><button className="btn btn-sm btn-s" onClick={()=>moveLdStage(ld.id,"new","Restored to pipeline")}>Restore</button></div>
+        </div>)}
+      </details>}
     </div>}
+
+    {/* ═══ ADD/EDIT APPLICANT MODAL ═══ */}
+    {showAddAp&& <div className="modal-bg" onClick={()=>setShowAddAp(false)}><div className="modal" style={{maxWidth:600,maxHeight:"90vh",overflow:"auto"}} onClick={e=>e.stopPropagation()}>
+      <div className="modal-h">{apForm.id?"Edit Applicant":"Add New Applicant"}<button className="btn btn-sm btn-s" onClick={()=>setShowAddAp(false)}>✕</button></div>
+      <div className="modal-b">
+        <div className="fg" style={{marginBottom:12}}>
+          <div className="fi"><label>Full Name *</label><input value={apForm.name} onChange={e=>setApForm(p=>({...p,name:e.target.value}))}/></div>
+          <div className="fi"><label>Email</label><input value={apForm.email} onChange={e=>setApForm(p=>({...p,email:e.target.value}))}/></div>
+        </div>
+        <div className="fg" style={{marginBottom:12}}>
+          <div className="fi"><label>Phone</label><input value={apForm.phone} onChange={e=>setApForm(p=>({...p,phone:e.target.value}))}/></div>
+          <div className="fi"><label>Source</label><select value={apForm.source} onChange={e=>setApForm(p=>({...p,source:e.target.value}))}><option value="">Select source</option><option>Indeed</option><option>LinkedIn</option><option>CWINathome.com</option><option>Referral</option><option>Job Fair</option><option>Other</option></select></div>
+        </div>
+        <div className="fg" style={{marginBottom:12}}>
+          <div className="fi"><label>Experience</label><input value={apForm.experience} onChange={e=>setApForm(p=>({...p,experience:e.target.value}))} placeholder="e.g. 3 years home care"/></div>
+          <div className="fi"><label>Availability</label><select value={apForm.availability} onChange={e=>setApForm(p=>({...p,availability:e.target.value}))}><option>Full-time</option><option>Part-time</option><option>Weekends</option><option>Overnight</option><option>Flexible</option></select></div>
+        </div>
+        <div style={{marginBottom:12}}>
+          <label style={{fontSize:11,fontWeight:600,textTransform:"uppercase",letterSpacing:.5,display:"block",marginBottom:4}}>Certifications</label>
+          <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:6}}>{(apForm.certs||[]).map((c,i)=><span key={i} className="tag tag-bl" style={{cursor:"pointer"}} onClick={()=>setApForm(p=>({...p,certs:p.certs.filter((_,j)=>j!==i)}))}>{c} ✕</span>)}</div>
+          <div style={{display:"flex",gap:4}}><select value={certInput} onChange={e=>setCertInput(e.target.value)}><option value="">Add cert...</option><option>CNA</option><option>HHA</option><option>CPR/BLS</option><option>First Aid</option><option>Dementia Care</option><option>Alzheimer's Care</option><option>Parkinson's Care</option><option>Wound Care</option><option>Medication Aide</option></select><button className="btn btn-sm btn-s" onClick={()=>{if(certInput){setApForm(p=>({...p,certs:[...(p.certs||[]),certInput]}));setCertInput("");}}}>Add</button></div>
+        </div>
+        <div style={{marginBottom:12}}>
+          <label style={{fontSize:11,fontWeight:600,textTransform:"uppercase",letterSpacing:.5,display:"block",marginBottom:4}}>Preferred Areas</label>
+          <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:6}}>{(apForm.preferredAreas||[]).map((a,i)=><span key={i} className="tag tag-wn" style={{cursor:"pointer"}} onClick={()=>setApForm(p=>({...p,preferredAreas:p.preferredAreas.filter((_,j)=>j!==i)}))}>{a} ✕</span>)}</div>
+          <div style={{display:"flex",gap:4}}><input value={areaInput} onChange={e=>setAreaInput(e.target.value)} placeholder="e.g. Lincoln Park" onKeyDown={e=>{if(e.key==="Enter"&&areaInput.trim()){setApForm(p=>({...p,preferredAreas:[...(p.preferredAreas||[]),areaInput.trim()]}));setAreaInput("");}}}/><button className="btn btn-sm btn-s" onClick={()=>{if(areaInput.trim()){setApForm(p=>({...p,preferredAreas:[...(p.preferredAreas||[]),areaInput.trim()]}));setAreaInput("");}}}>Add</button></div>
+        </div>
+        <div className="fi" style={{marginBottom:12}}><label>Notes</label><textarea value={apForm.notes||""} onChange={e=>setApForm(p=>({...p,notes:e.target.value}))} rows={3} style={{width:"100%"}}/></div>
+        <button className="btn btn-p" style={{width:"100%"}} disabled={!apForm.name?.trim()} onClick={()=>{
+          if(apForm.id){setApplicants(p=>p.map(a=>a.id===apForm.id?{...apForm}:a));}
+          else{const newAp={...apForm,id:"AP"+uid(),score:calcScore(apForm),activityLog:[{date:now().toISOString(),text:"Application received via "+apForm.source}]};setApplicants(p=>[newAp,...p]);}
+          setShowAddAp(false);
+        }}>{apForm.id?"Save Changes":"Add Applicant"}</button>
+      </div>
+    </div></div>}
+
+    {/* ═══ ADD/EDIT LEAD MODAL ═══ */}
+    {showAddLd&& <div className="modal-bg" onClick={()=>setShowAddLd(false)}><div className="modal" style={{maxWidth:600,maxHeight:"90vh",overflow:"auto"}} onClick={e=>e.stopPropagation()}>
+      <div className="modal-h">{ldForm.id?"Edit Lead":"Add New Lead"}<button className="btn btn-sm btn-s" onClick={()=>setShowAddLd(false)}>✕</button></div>
+      <div className="modal-b">
+        <div className="fg" style={{marginBottom:12}}>
+          <div className="fi"><label>Client Name *</label><input value={ldForm.name} onChange={e=>setLdForm(p=>({...p,name:e.target.value}))}/></div>
+          <div className="fi"><label>Age</label><input type="number" value={ldForm.age||""} onChange={e=>setLdForm(p=>({...p,age:e.target.value}))}/></div>
+        </div>
+        <div className="fg" style={{marginBottom:12}}>
+          <div className="fi"><label>Phone</label><input value={ldForm.phone} onChange={e=>setLdForm(p=>({...p,phone:e.target.value}))}/></div>
+          <div className="fi"><label>Email</label><input value={ldForm.email||""} onChange={e=>setLdForm(p=>({...p,email:e.target.value}))}/></div>
+        </div>
+        <div className="fg" style={{marginBottom:12}}>
+          <div className="fi"><label>Referral Source</label><select value={ldForm.referralSource} onChange={e=>setLdForm(p=>({...p,referralSource:e.target.value}))}><option value="">Select source</option><option>Hospital Discharge</option><option>Doctor Referral</option><option>Family Self-Referral</option><option>Website</option><option>Veterans Affairs</option><option>Insurance Referral</option><option>Other</option></select></div>
+          <div className="fi"><label>Urgency</label><select value={ldForm.urgency} onChange={e=>setLdForm(p=>({...p,urgency:e.target.value}))}><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></div>
+        </div>
+        <div className="fi" style={{marginBottom:12}}><label>Care Needs</label><textarea value={ldForm.needs||""} onChange={e=>setLdForm(p=>({...p,needs:e.target.value}))} rows={2} style={{width:"100%"}} placeholder="e.g. Post-surgery recovery, ADL assistance, companionship"/></div>
+        <div className="fg" style={{marginBottom:12}}>
+          <div className="fi"><label>Hours Needed</label><input value={ldForm.hoursNeeded||""} onChange={e=>setLdForm(p=>({...p,hoursNeeded:e.target.value}))} placeholder="e.g. 6 hrs/day, 5 days/week"/></div>
+          <div className="fi"><label>Assessment Date</label><input type="date" value={ldForm.assessmentDate||""} onChange={e=>setLdForm(p=>({...p,assessmentDate:e.target.value}))}/></div>
+        </div>
+        <div className="fi" style={{marginBottom:12}}><label>Notes</label><textarea value={ldForm.notes||""} onChange={e=>setLdForm(p=>({...p,notes:e.target.value}))} rows={3} style={{width:"100%"}}/></div>
+        <button className="btn btn-p" style={{width:"100%"}} disabled={!ldForm.name?.trim()} onClick={()=>{
+          if(ldForm.id){setLeads(p=>p.map(l=>l.id===ldForm.id?{...ldForm}:l));}
+          else{const newLd={...ldForm,id:"LD"+uid(),activityLog:[{date:now().toISOString(),text:"Lead received via "+ldForm.referralSource}]};setLeads(p=>[newLd,...p]);}
+          setShowAddLd(false);
+        }}>{ldForm.id?"Save Changes":"Add Lead"}</button>
+      </div>
+    </div></div>}
+
+    {/* ═══ NOTES MODAL ═══ */}
+    {(selAp||selLd)&& <div className="modal-bg" onClick={()=>{setSelAp(null);setSelLd(null);setNoteInput("");}}><div className="modal" style={{maxWidth:500}} onClick={e=>e.stopPropagation()}>
+      <div className="modal-h">Notes — {selAp?.name||selLd?.name}<button className="btn btn-sm btn-s" onClick={()=>{setSelAp(null);setSelLd(null);setNoteInput("");}}>✕</button></div>
+      <div className="modal-b">
+        <div style={{maxHeight:300,overflow:"auto",marginBottom:12}}>
+          {((selAp||selLd)?.activityLog||[]).map((a,i)=><div key={i} style={{padding:"8px 0",borderBottom:"var(--border-thin)",fontSize:12}}>
+            <div style={{fontWeight:600,fontSize:10,color:"var(--t2)"}}>{new Date(a.date).toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})} {new Date(a.date).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}</div>
+            <div style={{marginTop:2}}>{a.text}</div>
+          </div>)}
+          {((selAp||selLd)?.activityLog||[]).length===0&&<div className="empty">No activity yet</div>}
+        </div>
+        <div style={{display:"flex",gap:6}}>
+          <input value={noteInput} onChange={e=>setNoteInput(e.target.value)} placeholder="Add a note..." style={{flex:1}} onKeyDown={e=>{if(e.key==="Enter"&&noteInput.trim()){
+            if(selAp)addActivity(applicants,setApplicants,selAp.id,noteInput.trim());
+            if(selLd)addActivity(leads,setLeads,selLd.id,noteInput.trim());
+            setNoteInput("");
+          }}}/>
+          <button className="btn btn-sm btn-p" onClick={()=>{if(!noteInput.trim())return;
+            if(selAp)addActivity(applicants,setApplicants,selAp.id,noteInput.trim());
+            if(selLd)addActivity(leads,setLeads,selLd.id,noteInput.trim());
+            setNoteInput("");}}>Add Note</button>
+        </div>
+      </div>
+    </div></div>}
+
+    {/* ═══ ONBOARDING CHECKLIST MODAL ═══ */}
+    {showOnboard&& <div className="modal-bg" onClick={()=>setShowOnboard(null)}><div className="modal" style={{maxWidth:500}} onClick={e=>e.stopPropagation()}>
+      <div className="modal-h">📋 Onboarding Checklist<button className="btn btn-sm btn-s" onClick={()=>setShowOnboard(null)}>✕</button></div>
+      <div className="modal-b">
+        <div style={{marginBottom:12,fontSize:13}}><strong>{applicants.find(a=>a.id===showOnboard)?.name}</strong> — New Hire Onboarding</div>
+        {onboardItems.map((item,i)=>{
+          const ap=applicants.find(a=>a.id===showOnboard);
+          const completed=(ap?.onboarding||[]).includes(i);
+          return <div key={i} style={{padding:"10px 14px",borderBottom:"var(--border-thin)",display:"flex",gap:10,alignItems:"center",cursor:"pointer",background:completed?"#f0fff0":"transparent"}} onClick={()=>{
+            setApplicants(p=>p.map(a=>a.id===showOnboard?{...a,onboarding:completed?(a.onboarding||[]).filter(j=>j!==i):[...(a.onboarding||[]),i]}:a));
+          }}>
+            <div style={{width:20,height:20,border:"2px solid "+(completed?"var(--ok)":"#ccc"),display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,color:"var(--ok)",fontWeight:700}}>{completed?"✓":""}</div>
+            <div style={{fontSize:13,textDecoration:completed?"line-through":"none",color:completed?"var(--t2)":"var(--text)"}}>{item}</div>
+          </div>;
+        })}
+        <div style={{marginTop:12,fontSize:12,color:"var(--t2)",textAlign:"center"}}>
+          {(applicants.find(a=>a.id===showOnboard)?.onboarding||[]).length}/{onboardItems.length} complete
+        </div>
+      </div>
+    </div></div>}
   </div>;
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// COMPLIANCE CENTER
-// ═══════════════════════════════════════════════════════════════════════
 function CompliancePage({items,setItems,caregivers,clients}){
   const overdue=items.filter(i=>i.status==="overdue");
   const expiring=items.filter(i=>i.status==="expiring_soon");
