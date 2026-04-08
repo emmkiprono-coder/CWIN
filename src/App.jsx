@@ -1475,7 +1475,7 @@ function CGScheduleView({user,schedules,clients}){
   </div>;
 }
 
-function CaregiverPortal({user,clients,caregivers,careNotes,setCareNotes,incidents,setIncidents,expenses,setExpenses,events,chores,schedules,trainingProgress,setTrainingProgress,familyMsgs,setFamilyMsgs,modal,setModal,notify,assignments,incidentPrompts,getAssignedClients}){
+function CaregiverPortal({user,clients,caregivers,careNotes,setCareNotes,incidents,setIncidents,expenses,setExpenses,events,chores,schedules,trainingProgress,setTrainingProgress,familyMsgs,setFamilyMsgs,modal,setModal,notify,assignments,incidentPrompts,getAssignedClients,allUsers}){
   const [tab,setTab]=useState("home");
   const [shift,setShift]=useState(null);
   const [shiftHistory,setShiftHistory]=useState([]);
@@ -1594,16 +1594,28 @@ function CaregiverPortal({user,clients,caregivers,careNotes,setCareNotes,inciden
     const calc=calcETA(clientId);
     const etaMins=lateMinutes||calc.eta;
     const arrivalTime=new Date(now().getTime()+etaMins*60000);
+    const arrivalStr=arrivalTime.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"});
     const alert={id:"LA"+uid(),clientId,clientName:cl?.name||"",reason:lateReason,etaMinutes:etaMins,arrivalTime,gps:calc.currentGPS,currentAddr:calc.addr,destAddr:calc.destAddr,distance:calc.dist,sentAt:now(),caregiver:user.name,caregiverId:user.caregiverId};
     setLateAlert(alert);
     setLateHistory(p=>[alert,...p]);
     setShowLateForm(null);
-    // Notify client, owner, admin
+    // Notify client, owner, admin, and family
     if(notify){
-      const msg=`${user.name} is running late to ${cl?.name}. Reason: ${lateReason}. ETA: ${etaMins} minutes (${calc.dist.toFixed(1)} mi away).`;
-      notify(clientId,"running_late","Caregiver Running Late",msg,{caregiverId:user.caregiverId,eta:etaMins});
-      notify("U1","running_late","Caregiver Late Alert",msg,{caregiverId:user.caregiverId,clientId});
-      notify("U2","running_late","Caregiver Late Alert",msg,{caregiverId:user.caregiverId,clientId});
+      const clientMsg=`Hi ${cl?.name}, your caregiver ${user.name} is running approximately ${etaMins} minutes late. Reason: ${lateReason}. Expected arrival: ${arrivalStr}. We apologize for the inconvenience. Call 708-476-0021 with questions.`;
+      const adminMsg=`LATE ALERT: ${user.name} is running ${etaMins} min late to ${cl?.name}. Reason: ${lateReason}. ETA: ${arrivalStr} (${calc.dist.toFixed(1)} mi away). Current location: ${calc.addr||"GPS tracking"}.`;
+      const familyMsg=`CWIN Care Update: ${user.name} is running approximately ${etaMins} minutes late to ${cl?.name}'s visit. Reason: ${lateReason}. Expected arrival: ${arrivalStr}. Call 708-476-0021 with questions.`;
+      const meta={caregiverId:user.caregiverId,caregiverName:user.name,clientId,clientName:cl?.name,eta:etaMins,reason:lateReason,arrivalTime:arrivalStr,distance:calc.dist?.toFixed(1)};
+      // Notify client
+      notify(clientId,"running_late","Caregiver Running Late",clientMsg,meta);
+      // Notify owner + admin
+      notify("U1","running_late","⚠️ Caregiver Late Alert",adminMsg,meta);
+      notify("U2","running_late","⚠️ Caregiver Late Alert",adminMsg,meta);
+      // Notify family contacts
+      const familyContacts=cl?.familyPortal?.contacts||[];
+      familyContacts.forEach(fc=>{
+        const fUser=allUsers?.find(u=>u.email===fc.email);
+        if(fUser)notify(fUser.id,"running_late","Caregiver Running Late",familyMsg,meta);
+      });
     }
   };
 
@@ -2500,7 +2512,7 @@ export default function App(){
       </div>
     </div>
     <div className="main">
-      <CaregiverPortal user={user} clients={clients} caregivers={caregivers} careNotes={careNotes} setCareNotes={setCareNotes} incidents={incidents} setIncidents={setIncidents} expenses={expenses} setExpenses={setExpenses} events={events} chores={chores} schedules={schedules} trainingProgress={trainingProgress} setTrainingProgress={setTrainingProgress} familyMsgs={familyMsgs} setFamilyMsgs={setFamilyMsgs} modal={modal} setModal={setModal} notify={notify} assignments={assignments} incidentPrompts={incidentPrompts} getAssignedClients={getAssignedClients}/>
+      <CaregiverPortal user={user} clients={clients} caregivers={caregivers} careNotes={careNotes} setCareNotes={setCareNotes} incidents={incidents} setIncidents={setIncidents} expenses={expenses} setExpenses={setExpenses} events={events} chores={chores} schedules={schedules} trainingProgress={trainingProgress} setTrainingProgress={setTrainingProgress} familyMsgs={familyMsgs} setFamilyMsgs={setFamilyMsgs} modal={modal} setModal={setModal} notify={notify} assignments={assignments} incidentPrompts={incidentPrompts} getAssignedClients={getAssignedClients} allUsers={allUsers}/>
     </div>
   </div></>;
 
