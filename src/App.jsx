@@ -9,6 +9,49 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 const CO={name:"CWIN At Home",legal:"CWIN At Home LLC",tag:"Care When It's Needed",addr:"15941 S. Harlem Ave. #305, Tinley Park IL 60477",phone:"708.476.0021",email:"CWINathome@gmail.com"};
 
 // ═══════════════════════════════════════════════════════════════════════
+// SUPABASE CONNECTION — Photo storage + data persistence
+// ═══════════════════════════════════════════════════════════════════════
+const SB_URL="https://okvyhbypncctevvtwqkf.supabase.co";
+const SB_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9rdnloYnlwbmNjdGV2dnR3cWtmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA1NzA2NDEsImV4cCI6MjA4NjE0NjY0MX0.fD1sI9QkCeq_d8blnxH2vIi6i7C1mCVKaGTG_dHxNXY";
+const sbHeaders={"apikey":SB_KEY,"Authorization":"Bearer "+SB_KEY};
+
+// Upload photo to Supabase Storage (avatars bucket)
+async function sbUploadPhoto(file,entityType,entityId){
+  try{
+    const ext=file.name?.split(".").pop()||"jpg";
+    const path=entityType+"/"+entityId+"."+ext;
+    const resp=await fetch(SB_URL+"/storage/v1/object/avatars/"+path,{
+      method:"POST",
+      headers:{...sbHeaders,"Content-Type":file.type||"image/jpeg","x-upsert":"true"},
+      body:file
+    });
+    if(!resp.ok){const err=await resp.text();console.error("Upload error:",err);return null;}
+    return SB_URL+"/storage/v1/object/public/avatars/"+path+"?t="+Date.now();
+  }catch(e){console.error("Upload failed:",e);return null;}
+}
+
+// Upload base64 image to Supabase Storage
+async function sbUploadBase64(base64,entityType,entityId){
+  try{
+    const parts=base64.split(",");
+    const mime=parts[0].match(/:(.*?);/)?.[1]||"image/jpeg";
+    const ext=mime.split("/")[1]||"jpg";
+    const binary=atob(parts[1]);
+    const arr=new Uint8Array(binary.length);
+    for(let i=0;i<binary.length;i++)arr[i]=binary.charCodeAt(i);
+    const blob=new Blob([arr],{type:mime});
+    const path=entityType+"/"+entityId+"."+ext;
+    const resp=await fetch(SB_URL+"/storage/v1/object/avatars/"+path,{
+      method:"POST",
+      headers:{...sbHeaders,"Content-Type":mime,"x-upsert":"true"},
+      body:blob
+    });
+    if(!resp.ok){const err=await resp.text();console.error("Upload error:",err);return null;}
+    return SB_URL+"/storage/v1/object/public/avatars/"+path+"?t="+Date.now();
+  }catch(e){console.error("Upload failed:",e);return null;}
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 // STATUS DEFINITIONS — Every status used across the platform
 // ═══════════════════════════════════════════════════════════════════════
 const STATUS_DEFS={
@@ -469,24 +512,36 @@ function ProfileAvatar({name,photo,size=48,dark=false}){
 // ═══════════════════════════════════════════════════════════════════════
 // PHOTO UPLOAD — Converts to base64 for storage
 // ═══════════════════════════════════════════════════════════════════════
-function PhotoUpload({currentPhoto,onUpload,label="Upload photo"}){
+function PhotoUpload({currentPhoto,onUpload,label="Upload photo",entityType="client",entityId="unknown"}){
   const fileRef=useRef(null);
-  const handleFile=(e)=>{
+  const [uploading,setUploading]=useState(false);
+  const handleFile=async(e)=>{
     const file=e.target.files[0];
     if(!file)return;
     if(!file.type.startsWith("image/")){alert("Please select an image file");return;}
     if(file.size>5*1024*1024){alert("Image must be under 5MB");return;}
+    setUploading(true);
+    // Create resized version
     const reader=new FileReader();
-    reader.onload=(ev)=>{
+    reader.onload=async(ev)=>{
       const img=new Image();
-      img.onload=()=>{
+      img.onload=async()=>{
         const canvas=document.createElement("canvas");
         const max=200;
         let w=img.width,h=img.height;
         if(w>h){if(w>max){h=h*(max/w);w=max;}}else{if(h>max){w=w*(max/h);h=max;}}
         canvas.width=w;canvas.height=h;
         canvas.getContext("2d").drawImage(img,0,0,w,h);
-        onUpload(canvas.toDataURL("image/jpeg",0.8));
+        const base64=canvas.toDataURL("image/jpeg",0.8);
+        // Try uploading to Supabase Storage
+        const publicUrl=await sbUploadBase64(base64,entityType,entityId);
+        if(publicUrl){
+          onUpload(publicUrl);
+        }else{
+          // Fallback to base64 if Supabase upload fails
+          onUpload(base64);
+        }
+        setUploading(false);
       };
       img.src=ev.target.result;
     };
@@ -496,7 +551,7 @@ function PhotoUpload({currentPhoto,onUpload,label="Upload photo"}){
     {currentPhoto? <img src={currentPhoto} alt="Profile" style={{width:80,height:80,objectFit:"cover",border:"var(--border-thin)"}}/>
     : <div style={{width:80,height:80,display:"flex",alignItems:"center",justifyContent:"center",background:"var(--bg)",border:"2px dashed var(--bdr)",fontSize:10,color:"var(--t2)",textAlign:"center",padding:8}}>No photo</div>}
     <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} style={{display:"none"}}/>
-    <button className="btn btn-sm btn-s" onClick={()=>fileRef.current?.click()}>{currentPhoto?"Change":"Upload"}</button>
+    <button className="btn btn-sm btn-s" onClick={()=>fileRef.current?.click()} disabled={uploading}>{uploading?"Uploading...":currentPhoto?"Change":"Upload"}</button>
     {currentPhoto&&<button className="btn btn-sm btn-s" style={{fontSize:10,color:"var(--err)"}} onClick={()=>onUpload(null)}>Remove</button>}
   </div>;
 }
@@ -2357,7 +2412,28 @@ export default function App(){
   const [notifications,setNotifications]=useState([]);
   const [incidentPrompts,setIncidentPrompts]=useState(DEFAULT_INCIDENT_PROMPTS);
 
-  // Helper: send notification
+  // Load photos from Supabase Storage on startup
+  useEffect(()=>{
+    const loadPhotos=async()=>{
+      // Check each client for saved photo
+      for(const cl of CLIENTS){
+        const url=SB_URL+"/storage/v1/object/public/avatars/client/"+cl.id+".jpeg";
+        try{
+          const resp=await fetch(url,{method:"HEAD"});
+          if(resp.ok)setClients(p=>p.map(c=>c.id===cl.id?{...c,photo:url+"?t="+Date.now()}:c));
+        }catch(e){}
+      }
+      // Check each caregiver for saved photo
+      for(const cg of CAREGIVERS){
+        const url=SB_URL+"/storage/v1/object/public/avatars/caregiver/"+cg.id+".jpeg";
+        try{
+          const resp=await fetch(url,{method:"HEAD"});
+          if(resp.ok)setCaregivers(p=>p.map(c=>c.id===cg.id?{...c,photo:url+"?t="+Date.now()}:c));
+        }catch(e){}
+      }
+    };
+    loadPhotos();
+  },[]);
   const notify=(to,type,title,body,meta={})=>{
     const n={id:"NT"+uid(),to,type,title,body,meta,date:now().toISOString(),read:false};
     setNotifications(p=>[n,...p]);return n;
@@ -2901,7 +2977,7 @@ function ClientsPage({clients,setClients,sel,setSel,caregivers,careNotes,inciden
     <div className="card card-b" style={{display:"flex",gap:20,alignItems:"center",flexWrap:"wrap"}}>
       <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6}}>
         <ProfileAvatar name={cl.name} photo={cl.photo} size={64} dark/>
-        <PhotoUpload currentPhoto={cl.photo} onUpload={url=>setClients(p=>p.map(c=>c.id===cl.id?{...c,photo:url}:c))}/>
+        <PhotoUpload currentPhoto={cl.photo} onUpload={url=>setClients(p=>p.map(c=>c.id===cl.id?{...c,photo:url}:c))} entityType="client" entityId={cl.id}/>
       </div>
       <div style={{flex:1,minWidth:200}}>
         <div style={{fontFamily:"var(--fd)",fontSize:20,fontWeight:400}}>{cl.name}</div>
@@ -3939,7 +4015,7 @@ function TeamPage({caregivers,setCaregivers,progress}){
           <div style={{display:"flex",gap:14,alignItems:"flex-start",marginBottom:14}}>
             <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6}}>
               <ProfileAvatar name={cg.name} photo={cg.photo} size={56} dark/>
-              <PhotoUpload currentPhoto={cg.photo} onUpload={url=>setCaregivers(p=>p.map(c=>c.id===cg.id?{...c,photo:url}:c))}/>
+              <PhotoUpload currentPhoto={cg.photo} onUpload={url=>setCaregivers(p=>p.map(c=>c.id===cg.id?{...c,photo:url}:c))} entityType="caregiver" entityId={cg.id}/>
             </div>
             <div style={{flex:1}}><div style={{fontFamily:"var(--fd)",fontSize:17,fontWeight:400}}>{cg.name}</div><div style={{fontSize:12,color:"var(--t2)"}}>{cg.email}</div><div style={{fontSize:12,color:"var(--t2)"}}>{cg.phone}</div></div>
             <span className="tag tag-ok">Active</span>
