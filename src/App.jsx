@@ -559,6 +559,94 @@ function PhotoUpload({currentPhoto,onUpload,label="Upload photo",entityType="cli
 // ═══════════════════════════════════════════════════════════════════════
 // AI CLINICAL AGENT — Acuity scoring, action recommendations
 // ═══════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════
+// REFERRAL FORM — Shared by Client, Caregiver, and Family portals
+// ═══════════════════════════════════════════════════════════════════════
+function ReferralForm({referrerName,referrerRole,onReferCG,onReferClient}){
+  const [type,setType]=useState("client");
+  const [submitted,setSubmitted]=useState(false);
+  const [cgForm,setCgForm]=useState({name:"",phone:"",email:"",experience:"",certs:"",availability:"Full-time",notes:""});
+  const [clForm,setClForm]=useState({name:"",phone:"",age:"",needs:"",hoursNeeded:"",urgency:"medium",contactName:"",contactPhone:"",notes:""});
+
+  const submitCG=()=>{
+    if(!cgForm.name.trim())return;
+    onReferCG&&onReferCG({
+      id:"AP"+Math.random().toString(36).slice(2,9),name:cgForm.name,email:cgForm.email,phone:cgForm.phone,
+      certs:cgForm.certs?cgForm.certs.split(",").map(c=>c.trim()).filter(Boolean):[],
+      experience:cgForm.experience,availability:cgForm.availability,preferredAreas:[],
+      status:"new",appliedDate:new Date().toISOString().slice(0,10),bgCheck:"not_started",
+      source:"Referral ("+referrerName+")",notes:cgForm.notes,score:null,
+      activityLog:[{date:new Date().toISOString(),text:"Referred by "+referrerName+" ("+referrerRole+")"}]
+    });
+    setSubmitted(true);setTimeout(()=>{setSubmitted(false);setCgForm({name:"",phone:"",email:"",experience:"",certs:"",availability:"Full-time",notes:""});},3000);
+  };
+  const submitCL=()=>{
+    if(!clForm.name.trim())return;
+    onReferClient&&onReferClient({
+      id:"LD"+Math.random().toString(36).slice(2,9),name:clForm.name,phone:clForm.phone,age:parseInt(clForm.age)||"",
+      email:"",referralSource:"Referral ("+referrerName+" — "+referrerRole+")",needs:clForm.needs,
+      hoursNeeded:clForm.hoursNeeded,status:"new",assessmentDate:"",urgency:clForm.urgency,
+      notes:(clForm.contactName?"Primary contact: "+clForm.contactName+(clForm.contactPhone?" "+clForm.contactPhone:"")+". ":"")+clForm.notes,
+      activityLog:[{date:new Date().toISOString(),text:"Referred by "+referrerName+" ("+referrerRole+")"}]
+    });
+    setSubmitted(true);setTimeout(()=>{setSubmitted(false);setClForm({name:"",phone:"",age:"",needs:"",hoursNeeded:"",urgency:"medium",contactName:"",contactPhone:"",notes:""});},3000);
+  };
+
+  if(submitted)return <div className="ai-card" style={{textAlign:"center"}}><div style={{fontSize:40,marginBottom:8}}>🎉</div><h4>Thank You for Your Referral!</h4><p>Our team will review this referral and follow up shortly. You're helping grow the CWIN family!</p></div>;
+
+  return <div>
+    <div className="ai-card"><h4>📣 Refer Someone to CWIN At Home</h4><p>Know someone who needs care or wants to provide care? Submit a referral below. Our team will follow up within 24 hours. Referrals are the best way to grow our community!</p></div>
+    <div style={{display:"flex",gap:8,marginBottom:14}}>
+      <button className={`btn btn-sm ${type==="client"?"btn-p":"btn-s"}`} onClick={()=>setType("client")}>🏠 Refer a Client (someone who needs care)</button>
+      <button className={`btn btn-sm ${type==="caregiver"?"btn-p":"btn-s"}`} onClick={()=>setType("caregiver")}>👩‍⚕️ Refer a Caregiver (someone who gives care)</button>
+    </div>
+
+    {type==="client"&& <div className="card card-b">
+      <div className="card-h"><h3>🏠 Client Referral</h3></div>
+      <div style={{padding:"16px 20px"}}>
+        <div className="fg" style={{marginBottom:12}}>
+          <div className="fi"><label>Person's Name *</label><input value={clForm.name} onChange={e=>setClForm(p=>({...p,name:e.target.value}))} placeholder="e.g. Dorothy Martinez"/></div>
+          <div className="fi"><label>Age</label><input type="number" value={clForm.age} onChange={e=>setClForm(p=>({...p,age:e.target.value}))} placeholder="e.g. 81"/></div>
+        </div>
+        <div className="fg" style={{marginBottom:12}}>
+          <div className="fi"><label>Phone</label><input value={clForm.phone} onChange={e=>setClForm(p=>({...p,phone:e.target.value}))} placeholder="312-555-0000"/></div>
+          <div className="fi"><label>Urgency</label><select value={clForm.urgency} onChange={e=>setClForm(p=>({...p,urgency:e.target.value}))}><option value="low">Low — No rush</option><option value="medium">Medium — Within a week</option><option value="high">High — Immediate need</option></select></div>
+        </div>
+        <div className="fi" style={{marginBottom:12}}><label>What kind of care do they need?</label><textarea value={clForm.needs} onChange={e=>setClForm(p=>({...p,needs:e.target.value}))} rows={2} style={{width:"100%"}} placeholder="e.g. Post-surgery recovery, daily ADL assistance, companionship"/></div>
+        <div className="fg" style={{marginBottom:12}}>
+          <div className="fi"><label>Hours Needed</label><input value={clForm.hoursNeeded} onChange={e=>setClForm(p=>({...p,hoursNeeded:e.target.value}))} placeholder="e.g. 4 hours/day, 3 days/week"/></div>
+        </div>
+        <div className="fg" style={{marginBottom:12}}>
+          <div className="fi"><label>Best Contact Person</label><input value={clForm.contactName} onChange={e=>setClForm(p=>({...p,contactName:e.target.value}))} placeholder="e.g. Maria (daughter)"/></div>
+          <div className="fi"><label>Contact Phone</label><input value={clForm.contactPhone} onChange={e=>setClForm(p=>({...p,contactPhone:e.target.value}))} placeholder="312-555-0001"/></div>
+        </div>
+        <div className="fi" style={{marginBottom:12}}><label>Anything else we should know?</label><textarea value={clForm.notes} onChange={e=>setClForm(p=>({...p,notes:e.target.value}))} rows={2} style={{width:"100%"}}/></div>
+        <button className="btn btn-p" style={{width:"100%"}} disabled={!clForm.name.trim()} onClick={submitCL}>Submit Client Referral</button>
+      </div>
+    </div>}
+
+    {type==="caregiver"&& <div className="card card-b">
+      <div className="card-h"><h3>👩‍⚕️ Caregiver Referral</h3></div>
+      <div style={{padding:"16px 20px"}}>
+        <div className="fg" style={{marginBottom:12}}>
+          <div className="fi"><label>Person's Name *</label><input value={cgForm.name} onChange={e=>setCgForm(p=>({...p,name:e.target.value}))} placeholder="e.g. Diana Rodriguez"/></div>
+          <div className="fi"><label>Phone</label><input value={cgForm.phone} onChange={e=>setCgForm(p=>({...p,phone:e.target.value}))} placeholder="312-555-0000"/></div>
+        </div>
+        <div className="fg" style={{marginBottom:12}}>
+          <div className="fi"><label>Email</label><input value={cgForm.email} onChange={e=>setCgForm(p=>({...p,email:e.target.value}))} placeholder="diana@email.com"/></div>
+          <div className="fi"><label>Availability</label><select value={cgForm.availability} onChange={e=>setCgForm(p=>({...p,availability:e.target.value}))}><option>Full-time</option><option>Part-time</option><option>Weekends</option><option>Flexible</option></select></div>
+        </div>
+        <div className="fg" style={{marginBottom:12}}>
+          <div className="fi"><label>Certifications</label><input value={cgForm.certs} onChange={e=>setCgForm(p=>({...p,certs:e.target.value}))} placeholder="e.g. CNA, CPR/BLS, HHA (comma separated)"/></div>
+          <div className="fi"><label>Experience</label><input value={cgForm.experience} onChange={e=>setCgForm(p=>({...p,experience:e.target.value}))} placeholder="e.g. 3 years home care"/></div>
+        </div>
+        <div className="fi" style={{marginBottom:12}}><label>Why would they be a good fit?</label><textarea value={cgForm.notes} onChange={e=>setCgForm(p=>({...p,notes:e.target.value}))} rows={2} style={{width:"100%"}}/></div>
+        <button className="btn btn-p" style={{width:"100%"}} disabled={!cgForm.name.trim()} onClick={submitCG}>Submit Caregiver Referral</button>
+      </div>
+    </div>}
+  </div>;
+}
+
 function ClinicalAgent({cl,incidents,careNotes}){
   const dxCount=cl.dx.length;
   const medCount=cl.meds.length;
@@ -1475,7 +1563,7 @@ function CGScheduleView({user,schedules,clients}){
   </div>;
 }
 
-function CaregiverPortal({user,clients,caregivers,careNotes,setCareNotes,incidents,setIncidents,expenses,setExpenses,events,chores,schedules,trainingProgress,setTrainingProgress,familyMsgs,setFamilyMsgs,modal,setModal,notify,assignments,incidentPrompts,getAssignedClients,allUsers}){
+function CaregiverPortal({user,clients,caregivers,careNotes,setCareNotes,incidents,setIncidents,expenses,setExpenses,events,chores,schedules,trainingProgress,setTrainingProgress,familyMsgs,setFamilyMsgs,modal,setModal,notify,assignments,incidentPrompts,getAssignedClients,allUsers,onReferCG,onReferClient}){
   const [tab,setTab]=useState("home");
   const [shift,setShift]=useState(null);
   const [shiftHistory,setShiftHistory]=useState([]);
@@ -1623,7 +1711,7 @@ function CaregiverPortal({user,clients,caregivers,careNotes,setCareNotes,inciden
 
   const tabs=[
     {key:"home",label:"Home"},{key:"timeclock",label:"Time Clock"},{key:"schedule",label:"Schedule"},{key:"clients",label:"My Clients"},{key:"notes",label:"Care Notes"},
-    {key:"expenses",label:"Expenses"},{key:"training",label:"Training"},{key:"messages",label:"Messages"},
+    {key:"expenses",label:"Expenses"},{key:"training",label:"Training"},{key:"messages",label:"Messages"},{key:"refer",label:"📣 Refer"},
   ];
 
   return <div>
@@ -2040,13 +2128,16 @@ function CaregiverPortal({user,clients,caregivers,careNotes,setCareNotes,inciden
         <div style={{fontSize:10,color:"var(--t2)",marginTop:8,textAlign:"center"}}>Expenses are sent to admin for approval. They will not appear on client billing until approved.</div>
       </div>
     </div></div>}
+
+    {/* ═══ REFER ═══ */}
+    {tab==="refer"&& <ReferralForm referrerName={user.name} referrerRole="Caregiver" onReferCG={onReferCG} onReferClient={onReferClient}/>}
   </div>;
 }
 
 // ═══════════════════════════════════════════════════════════════════════
 // FAMILY STANDALONE PORTAL
 // ═══════════════════════════════════════════════════════════════════════
-function FamilyStandalonePortal({user,clients,caregivers,careNotes,events,familyMsgs,setFamilyMsgs,incidents,schedules,expenses,vitals,invoices,assignments,notifications,notify}){
+function FamilyStandalonePortal({user,clients,caregivers,careNotes,events,familyMsgs,setFamilyMsgs,incidents,schedules,expenses,vitals,invoices,assignments,notifications,notify,onReferCG,onReferClient}){
   const cl=clients.find(c=>c.id===user.clientId)||clients[0];
   const [tab,setTab]=useState("home");
   const [msgText,setMsgText]=useState("");
@@ -2081,7 +2172,7 @@ function FamilyStandalonePortal({user,clients,caregivers,careNotes,events,family
   const tabs=[
     {key:"home",label:"🏠 Home"},{key:"schedule",label:"📅 Schedule"},{key:"notes",label:"📝 Notes"},
     {key:"meds",label:"💊 Meds"},{key:"messages",label:"💬 Messages"},{key:"billing",label:"📊 Billing"},
-    {key:"team",label:"👩‍⚕️ Team"},{key:"alerts",label:"🔔 Alerts"},
+    {key:"team",label:"👩‍⚕️ Team"},{key:"alerts",label:"🔔 Alerts"},{key:"refer",label:"📣 Refer"},
   ];
 
   return <div>
@@ -2317,6 +2408,9 @@ function FamilyStandalonePortal({user,clients,caregivers,careNotes,events,family
         </div>
       </div>
     </div>}
+
+    {/* ═══ REFER ═══ */}
+    {tab==="refer"&& <ReferralForm referrerName={user.name} referrerRole={"Family Member — "+cl.name} onReferCG={onReferCG} onReferClient={onReferClient}/>}
   </div>;
 }
 
@@ -2512,7 +2606,7 @@ export default function App(){
       </div>
     </div>
     <div className="main">
-      <CaregiverPortal user={user} clients={clients} caregivers={caregivers} careNotes={careNotes} setCareNotes={setCareNotes} incidents={incidents} setIncidents={setIncidents} expenses={expenses} setExpenses={setExpenses} events={events} chores={chores} schedules={schedules} trainingProgress={trainingProgress} setTrainingProgress={setTrainingProgress} familyMsgs={familyMsgs} setFamilyMsgs={setFamilyMsgs} modal={modal} setModal={setModal} notify={notify} assignments={assignments} incidentPrompts={incidentPrompts} getAssignedClients={getAssignedClients} allUsers={allUsers}/>
+      <CaregiverPortal user={user} clients={clients} caregivers={caregivers} careNotes={careNotes} setCareNotes={setCareNotes} incidents={incidents} setIncidents={setIncidents} expenses={expenses} setExpenses={setExpenses} events={events} chores={chores} schedules={schedules} trainingProgress={trainingProgress} setTrainingProgress={setTrainingProgress} familyMsgs={familyMsgs} setFamilyMsgs={setFamilyMsgs} modal={modal} setModal={setModal} notify={notify} assignments={assignments} incidentPrompts={incidentPrompts} getAssignedClients={getAssignedClients} allUsers={allUsers} onReferCG={ap=>setCGApplicants(p=>[ap,...p])} onReferClient={ld=>setClientLeads(p=>[ld,...p])}/>
     </div>
   </div></>;
 
@@ -2527,7 +2621,7 @@ export default function App(){
       </div>
     </div>
     <div className="main">
-      <ClientPortalPage clients={clients} caregivers={caregivers} notify={notify} assignments={assignments} sel={user.clientId||"CL1"} setSel={()=>{}} serviceRequests={serviceRequests} setServiceRequests={setServiceRequests} surveys={surveys} setSurveys={setSurveys} careGoals={careGoals} vitals={vitals} setVitals={setVitals} documents={documents} careNotes={careNotes} events={events} expenses={expenses} familyMsgs={familyMsgs} setFamilyMsgs={setFamilyMsgs} notifications={notifications}/>
+      <ClientPortalPage clients={clients} caregivers={caregivers} notify={notify} assignments={assignments} sel={user.clientId||"CL1"} setSel={()=>{}} serviceRequests={serviceRequests} setServiceRequests={setServiceRequests} surveys={surveys} setSurveys={setSurveys} careGoals={careGoals} vitals={vitals} setVitals={setVitals} documents={documents} careNotes={careNotes} events={events} expenses={expenses} familyMsgs={familyMsgs} setFamilyMsgs={setFamilyMsgs} notifications={notifications} onReferCG={ap=>setCGApplicants(p=>[ap,...p])} onReferClient={ld=>setClientLeads(p=>[ld,...p])}/>
     </div>
   </div></>;
 
@@ -2542,7 +2636,7 @@ export default function App(){
       </div>
     </div>
     <div className="main">
-      <FamilyStandalonePortal user={user} clients={clients} caregivers={caregivers} careNotes={careNotes} events={events} familyMsgs={familyMsgs} setFamilyMsgs={setFamilyMsgs} incidents={incidents} schedules={schedules} expenses={expenses} vitals={vitals} invoices={invoices} assignments={assignments} notifications={notifications} notify={notify}/>
+      <FamilyStandalonePortal user={user} clients={clients} caregivers={caregivers} careNotes={careNotes} events={events} familyMsgs={familyMsgs} setFamilyMsgs={setFamilyMsgs} incidents={incidents} schedules={schedules} expenses={expenses} vitals={vitals} invoices={invoices} assignments={assignments} notifications={notifications} notify={notify} onReferCG={ap=>setCGApplicants(p=>[ap,...p])} onReferClient={ld=>setClientLeads(p=>[ld,...p])}/>
     </div>
   </div></>;
 
@@ -2578,7 +2672,7 @@ export default function App(){
       {pg==="compliance"&&<CompliancePage items={compliance} setItems={setCompliance} caregivers={caregivers} clients={clients}/>}
       {pg==="training"&&<TrainingPage caregivers={caregivers} progress={trainingProgress} setProgress={setTrainingProgress} modal={modal} setModal={setModal}/>}
       {pg==="events"&&<EventsPage events={events} setEvents={setEvents} clients={clients}/>}
-      {pg==="portal"&&<ClientPortalPage clients={clients} caregivers={caregivers} notify={notify} assignments={assignments} sel={portalClient} setSel={setPortalClient} serviceRequests={serviceRequests} setServiceRequests={setServiceRequests} surveys={surveys} setSurveys={setSurveys} careGoals={careGoals} vitals={vitals} setVitals={setVitals} documents={documents} careNotes={careNotes} events={events} expenses={expenses} familyMsgs={familyMsgs} setFamilyMsgs={setFamilyMsgs} notifications={notifications}/>}
+      {pg==="portal"&&<ClientPortalPage clients={clients} caregivers={caregivers} notify={notify} assignments={assignments} sel={portalClient} setSel={setPortalClient} serviceRequests={serviceRequests} setServiceRequests={setServiceRequests} surveys={surveys} setSurveys={setSurveys} careGoals={careGoals} vitals={vitals} setVitals={setVitals} documents={documents} careNotes={careNotes} events={events} expenses={expenses} familyMsgs={familyMsgs} setFamilyMsgs={setFamilyMsgs} notifications={notifications} onReferCG={ap=>setCGApplicants(p=>[ap,...p])} onReferClient={ld=>setClientLeads(p=>[ld,...p])}/>}
       {pg==="family"&&<FamilyPage clients={clients} familyMsgs={familyMsgs} setFamilyMsgs={setFamilyMsgs} careNotes={careNotes} incidents={incidents} events={events}/>}
       {pg==="team"&&<TeamPage caregivers={caregivers} setCaregivers={setCaregivers} progress={trainingProgress}/>}
       {pg==="users"&&<UserManagementPage allUsers={allUsers} setAllUsers={setAllUsers}/>}
@@ -3612,7 +3706,7 @@ function TrainingPage({caregivers,progress,setProgress,modal,setModal}){
 // ═══════════════════════════════════════════════════════════════════════
 // CLIENT PORTAL — Full interactive client-facing experience
 // ═══════════════════════════════════════════════════════════════════════
-function ClientPortalPage({clients,caregivers,notify,assignments,sel,setSel,serviceRequests,setServiceRequests,surveys,setSurveys,careGoals,vitals,setVitals,documents,careNotes,events,expenses,familyMsgs,setFamilyMsgs,notifications}){
+function ClientPortalPage({clients,caregivers,notify,assignments,sel,setSel,serviceRequests,setServiceRequests,surveys,setSurveys,careGoals,vitals,setVitals,documents,careNotes,events,expenses,familyMsgs,setFamilyMsgs,notifications,onReferCG,onReferClient}){
   const cl=clients.find(c=>c.id===sel)||clients[0];
   const [tab,setTab]=useState("home");
   const [showRequest,setShowRequest]=useState(false);
@@ -3646,6 +3740,7 @@ function ClientPortalPage({clients,caregivers,notify,assignments,sel,setSel,serv
     {key:"requests",label:"📩 Requests",show:true},
     {key:"billing",label:"💰 Billing",show:true},
     {key:"documents",label:"📁 Documents",show:true},
+    {key:"refer",label:"📣 Refer",show:true},
     {key:"feedback",label:"⭐ Feedback",show:true},
   ];
 
@@ -3942,43 +4037,87 @@ function ClientPortalPage({clients,caregivers,notify,assignments,sel,setSel,serv
       </div>
     </div>}
 
+    {/* ═══ REFER ═══ */}
+    {tab==="refer"&& <ReferralForm referrerName={cl.name} referrerRole="Client" onReferCG={onReferCG} onReferClient={onReferClient}/>}
+
     {/* ═══ FEEDBACK ═══ */}
     {tab==="feedback"&& <div>
+      <div className="ai-card"><h4>💛 Your Voice Matters</h4><p>Your feedback helps us improve your care. Rate your caregivers, submit suggestions, report concerns, or share a testimonial. All feedback is reviewed by our care team within 24 hours.</p></div>
+
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
         <h3 style={{fontFamily:"var(--fd)",fontSize:16}}>Satisfaction & Feedback</h3>
-        <button className="btn btn-p btn-sm" onClick={()=>setShowSurvey(true)}>⭐ New Survey</button>
+        <div style={{display:"flex",gap:6}}>
+          <button className="btn btn-p btn-sm" onClick={()=>setShowSurvey(true)}>⭐ Rate Caregiver</button>
+        </div>
+      </div>
+
+      {/* Quick Feedback Cards */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:14}}>
+        {[
+          {icon:"💡",label:"Suggestion",desc:"Ideas to improve your care",color:"#3c4f3d"},
+          {icon:"⚠️",label:"Concern",desc:"Something that needs attention",color:"#6b4400"},
+          {icon:"💛",label:"Testimonial",desc:"Share what you love about CWIN",color:"#8a7356"},
+        ].map(item=><div key={item.label} style={{padding:"16px",background:"var(--card)",border:"var(--border-thin)",cursor:"pointer",textAlign:"center"}} onClick={()=>{
+          const text=prompt(item.label+": Please share your "+item.label.toLowerCase()+"...");
+          if(text&&text.trim()){
+            setSurveys(p=>[{id:"FB"+uid(),clientId:cl.id,date:today(),type:item.label.toLowerCase(),ratings:{},comments:text,caregiver:""},...p]);
+            if(notify)notify("U1","message","Client "+item.label+": "+cl.name,text.slice(0,200),{clientId:cl.id,type:item.label.toLowerCase()});
+          }
+        }}>
+          <div style={{fontSize:28,marginBottom:6}}>{item.icon}</div>
+          <div style={{fontWeight:700,fontSize:13}}>{item.label}</div>
+          <div style={{fontSize:10,color:"var(--t2)",marginTop:2}}>{item.desc}</div>
+        </div>)}
       </div>
 
       {/* Average Ratings */}
-      {clSurveys.length>0&& <div className="card card-b">
+      {clSurveys.filter(s=>s.ratings?.overall).length>0&& <div className="card card-b">
         <h3 style={{fontSize:14,fontWeight:700,marginBottom:12}}>Your Average Ratings</h3>
         <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:10}}>
           {["overall","punctuality","communication","skills","respect","reliability"].map(k=>{
-            const avg=clSurveys.reduce((s,sv)=>s+(sv.ratings[k]||0),0)/clSurveys.length;
-            return <div key={k} style={{textAlign:"center",padding:"12px 8px",background:"var(--bg)",borderRadius:"var(--rs)"}}>
-              <div style={{fontFamily:"var(--fd)",fontSize:24,fontWeight:900,color:avg>=4.5?"var(--ok)":avg>=3.5?"var(--blue)":"var(--warn)"}}>{avg.toFixed(1)}</div>
+            const rated=clSurveys.filter(s=>s.ratings?.[k]);
+            const avg=rated.length>0?rated.reduce((s,sv)=>s+(sv.ratings[k]||0),0)/rated.length:0;
+            return <div key={k} style={{textAlign:"center",padding:"12px 8px",background:"var(--bg)"}}>
+              <div style={{fontFamily:"var(--fd)",fontSize:24,fontWeight:900,color:avg>=4.5?"var(--ok)":avg>=3.5?"var(--blue)":"var(--warn)"}}>{avg>0?avg.toFixed(1):"—"}</div>
               <div style={{fontSize:10,textTransform:"uppercase",color:"var(--t2)",fontWeight:600,marginTop:2}}>{k}</div>
-              <div style={{fontSize:14,marginTop:2}}>{"★".repeat(Math.round(avg))+"☆".repeat(5-Math.round(avg))}</div>
+              <div style={{fontSize:14,marginTop:2}}>{avg>0?"★".repeat(Math.round(avg))+"☆".repeat(5-Math.round(avg)):""}</div>
             </div>;
           })}
         </div>
       </div>}
 
-      {/* Survey History */}
-      {clSurveys.map(sv=>{const cg=caregivers.find(c=>c.id===sv.caregiver);return <div key={sv.id} className="card card-b">
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-          <div><span style={{fontWeight:700,fontSize:14}}>Survey: {fmtD(sv.date)}</span><span style={{fontSize:12,color:"var(--t2)",marginLeft:8}}>for {cg?.name}</span></div>
-          <div style={{fontFamily:"var(--fd)",fontSize:18,fontWeight:900,color:"var(--ok)"}}>{sv.ratings.overall}/5 ★</div>
-        </div>
-        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
-          {Object.entries(sv.ratings).filter(([k])=>k!=="overall").map(([k,v])=> <span key={k} className={`tag ${v>=4?"tag-ok":v>=3?"tag-bl":"tag-wn"}`}>{k}: {v}/5</span>)}
-        </div>
-        {sv.comments&& <div style={{fontSize:13,lineHeight:1.6,padding:"10px 14px",background:"var(--bg)",borderRadius:"var(--rs)",fontStyle:"italic"}}>"{sv.comments}"</div>}
-      </div>;})}
+      {/* Feedback History */}
+      <div className="card">
+        <div className="card-h"><h3>Feedback History ({clSurveys.length})</h3></div>
+        {clSurveys.length===0&&<div className="empty">No feedback submitted yet. Your feedback helps us provide better care!</div>}
+        {clSurveys.map(sv=>{const cg=caregivers.find(c=>c.id===sv.caregiver);const isSurvey=sv.ratings?.overall;const feedbackType=sv.type||"survey";return <div key={sv.id} style={{padding:"14px 20px",borderBottom:"var(--border-thin)"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              <span style={{fontSize:18}}>{feedbackType==="suggestion"?"💡":feedbackType==="concern"?"⚠️":feedbackType==="testimonial"?"💛":"⭐"}</span>
+              <div>
+                <span style={{fontWeight:700,fontSize:13}}>{isSurvey?"Caregiver Rating":"" }{feedbackType!=="survey"?feedbackType.charAt(0).toUpperCase()+feedbackType.slice(1):""}</span>
+                {cg&&<span style={{fontSize:12,color:"var(--t2)",marginLeft:8}}>for {cg.name}</span>}
+              </div>
+            </div>
+            <div style={{display:"flex",gap:6,alignItems:"center"}}>
+              {isSurvey&&<span style={{fontFamily:"var(--fd)",fontSize:16,fontWeight:900,color:"var(--ok)"}}>{sv.ratings.overall}/5</span>}
+              <span style={{fontSize:11,color:"var(--t2)"}}>{fmtD(sv.date)}</span>
+            </div>
+          </div>
+          {isSurvey&&<div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
+            {Object.entries(sv.ratings).filter(([k])=>k!=="overall").map(([k,v])=> <span key={k} className={`tag ${v>=4?"tag-ok":v>=3?"tag-bl":"tag-wn"}`}>{k}: {v}/5</span>)}
+          </div>}
+          {sv.comments&& <div style={{fontSize:13,lineHeight:1.6,padding:"10px 14px",background:"var(--bg)",fontStyle:feedbackType==="testimonial"?"italic":"normal"}}>
+            {feedbackType==="testimonial"?'"':""}
+            {sv.comments}
+            {feedbackType==="testimonial"?'"':""}
+          </div>}
+        </div>;})}
+      </div>
 
       {showSurvey&& <div className="modal-bg" onClick={()=>setShowSurvey(false)}><div className="modal" onClick={e=>e.stopPropagation()}>
         <div className="modal-h">⭐ Rate Your Care<button className="btn btn-sm btn-s" onClick={()=>setShowSurvey(false)}>✕</button></div>
-        <SurveyForm clientId={cl.id} caregivers={assignedCGs} onSave={sv=>{setSurveys(p=>[{id:"SV"+uid(),clientId:cl.id,date:today(),...sv},...p]);setShowSurvey(false);}}/>
+        <SurveyForm clientId={cl.id} caregivers={assignedCGs} onSave={sv=>{setSurveys(p=>[{id:"SV"+uid(),clientId:cl.id,date:today(),...sv},...p]);setShowSurvey(false);if(notify)notify("U1","message","New Survey from "+cl.name,"Overall: "+sv.ratings.overall+"/5. "+sv.comments,{clientId:cl.id});}}/>
       </div></div>}
     </div>}
   </div>;
