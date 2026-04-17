@@ -51,6 +51,37 @@ async function sbUploadBase64(base64,entityType,entityId){
   }catch(e){console.error("Upload failed:",e);return null;}
 }
 
+// Upload receipt image to Supabase Storage (receipts bucket - private)
+async function sbUploadReceipt(base64,expenseId){
+  try{
+    const parts=base64.split(",");
+    const mime=parts[0].match(/:(.*?);/)?.[1]||"image/jpeg";
+    const ext=mime.split("/")[1]||"jpg";
+    const binary=atob(parts[1]);
+    const arr=new Uint8Array(binary.length);
+    for(let i=0;i<binary.length;i++)arr[i]=binary.charCodeAt(i);
+    const blob=new Blob([arr],{type:mime});
+    const path="expenses/"+expenseId+"."+ext;
+    // Try receipts bucket first, fall back to avatars
+    let resp=await fetch(SB_URL+"/storage/v1/object/receipts/"+path,{
+      method:"POST",
+      headers:{...sbHeaders,"Content-Type":mime,"x-upsert":"true"},
+      body:blob
+    });
+    if(!resp.ok){
+      // Fall back to avatars bucket which is public
+      resp=await fetch(SB_URL+"/storage/v1/object/avatars/receipt/"+expenseId+"."+ext,{
+        method:"POST",
+        headers:{...sbHeaders,"Content-Type":mime,"x-upsert":"true"},
+        body:blob
+      });
+      if(!resp.ok){const err=await resp.text();console.error("Receipt upload error:",err);return null;}
+      return SB_URL+"/storage/v1/object/public/avatars/receipt/"+expenseId+"."+ext+"?t="+Date.now();
+    }
+    return SB_URL+"/storage/v1/object/public/receipts/"+path+"?t="+Date.now();
+  }catch(e){console.error("Receipt upload failed:",e);return null;}
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // STATUS DEFINITIONS — Every status used across the platform
 // ═══════════════════════════════════════════════════════════════════════
@@ -762,9 +793,9 @@ const ROLES={
 };
 
 const PERMS={
-  owner:["dash","schedule","clients","care","recon","expenses","billing","payroll","rates","training","recruiting","marketing","events","compliance","portal","family","team","ai_hub","ai_hub","notifications","incident_settings","users"],
-  admin:["dash","schedule","clients","care","recon","expenses","billing","payroll","rates","training","recruiting","marketing","events","compliance","portal","family","team","notifications","incident_settings","users"],
-  manager:["dash","schedule","clients","care","recon","expenses","billing","payroll","rates","training","events","compliance","ai_hub","family","team"],
+  owner:["dash","schedule","clients","care","recon","expenses","gps_map","shift_swap","supplies","billing","payroll","rates","training","recruiting","marketing","events","compliance","audit","portal","family","team","ai_hub","features","notifications","incident_settings","users"],
+  admin:["dash","schedule","clients","care","recon","expenses","gps_map","shift_swap","supplies","billing","payroll","rates","training","recruiting","marketing","events","compliance","audit","portal","family","team","features","notifications","incident_settings","users"],
+  manager:["dash","schedule","clients","care","recon","expenses","gps_map","shift_swap","supplies","billing","payroll","rates","training","events","compliance","ai_hub","family","team"],
   caregiver:["cg_home","cg_schedule","cg_clients","cg_notes","cg_expenses","cg_training","cg_messages"],
   client:["cl_home","cl_health","cl_goals","cl_schedule","cl_messages","cl_requests","cl_billing","cl_documents","cl_feedback"],
   family:["fm_home","fm_updates","fm_messages","fm_events"],
@@ -945,6 +976,33 @@ const seedServiceRequests=[
   {id:"SR3",clientId:"CL3",date:"2026-03-08T09:00:00",type:"Caregiver Feedback",description:"Olena has been wonderful. Very patient with my tremor and always on time. Please tell her I appreciate her.",status:"acknowledged",response:"Thank you, Steven! We've shared your kind words with Olena. She was very touched.",respondedAt:"2026-03-08T16:00:00"},
   {id:"SR4",clientId:"CL2",date:"2026-03-09T08:00:00",type:"Schedule Change",description:"Can we add an extra visit on Saturday for help with spring cleaning?",status:"pending",response:"",respondedAt:""},
   {id:"SR5",clientId:"CL1",date:"2026-03-04T11:00:00",type:"Concern",description:"My caregiver left 15 minutes early last Tuesday. Not a huge deal but wanted to mention it.",status:"resolved",response:"Thank you for letting us know, Becky. We've reviewed the time records and spoken with Erolyn. This has been addressed.",respondedAt:"2026-03-04T15:00:00"},
+];
+
+// ═══════════════════════════════════════════════════════════════════════
+// FEATURE FLAGS — Per-client and per-caregiver feature toggles
+// ═══════════════════════════════════════════════════════════════════════
+const FEATURES=[
+  // AI Features
+  {id:"ai_care_notes",label:"AI Care Note Assistant",desc:"Caregiver writes brief note → AI expands to full clinical documentation",icon:"📝",cat:"AI",appliesTo:["caregiver","client"],default:true},
+  {id:"ai_incident_triage",label:"AI Incident Triage",desc:"AI analyzes incidents and suggests severity, actions, and notifications",icon:"🚨",cat:"AI",appliesTo:["caregiver","client"],default:true},
+  {id:"ai_schedule_opt",label:"AI Schedule Optimizer",desc:"AI suggests optimal schedules based on certs, availability, geography",icon:"📅",cat:"AI",appliesTo:["caregiver","client"],default:false},
+  {id:"ai_family_summary",label:"AI Family Communications",desc:"Auto-generated weekly summaries personalized for each family member",icon:"💬",cat:"AI",appliesTo:["client"],default:true},
+  {id:"ai_onboarding",label:"AI Onboarding Coach",desc:"AI tutor for new caregivers: HIPAA, dementia care, CWIN procedures",icon:"🎓",cat:"AI",appliesTo:["caregiver"],default:true},
+  {id:"ai_compliance",label:"AI Compliance Watcher",desc:"Predicts expirations, drafts renewal reminders, scans for gaps",icon:"🛡️",cat:"AI",appliesTo:["caregiver"],default:true},
+  // Operations
+  {id:"gps_live_map",label:"Real-Time GPS Map",desc:"Live caregiver location during shifts (requires phone GPS)",icon:"📍",cat:"Operations",appliesTo:["caregiver","client"],default:false},
+  {id:"shift_swapping",label:"Smart Shift Swapping",desc:"Caregivers request swaps; AI finds qualified replacements",icon:"🔄",cat:"Operations",appliesTo:["caregiver"],default:true},
+  {id:"auto_recon",label:"Auto-Reconciliation",desc:"Auto-match scheduled vs actual hours, flag discrepancies",icon:"🔍",cat:"Operations",appliesTo:["caregiver","client"],default:true},
+  {id:"visit_verification",label:"Visit Verification (Selfie+GPS)",desc:"Selfie + GPS check at clock-in/out for proof of presence",icon:"📸",cat:"Operations",appliesTo:["caregiver","client"],default:false},
+  {id:"supply_tracking",label:"Supply Tracking",desc:"Track inventory (gloves, wipes, meds) with auto-reorder alerts",icon:"📦",cat:"Operations",appliesTo:["client"],default:false},
+  // Compliance & Trust
+  {id:"hipaa_chat",label:"HIPAA-Compliant Chat",desc:"End-to-end encrypted messaging between family/caregivers/admin",icon:"🔐",cat:"Compliance",appliesTo:["caregiver","client"],default:true},
+  {id:"audit_log",label:"Detailed Audit Log",desc:"Every action logged for compliance and dispute resolution",icon:"📜",cat:"Compliance",appliesTo:["caregiver","client"],default:true},
+  {id:"e_signature",label:"Document E-Signature",desc:"Sign care plans, agreements, consents in-app",icon:"✍️",cat:"Compliance",appliesTo:["client"],default:false},
+  // Mobile & Accessibility
+  {id:"voice_commands",label:"Voice Commands",desc:'"Hey CWIN, log a care note for Becky"',icon:"🎤",cat:"Mobile",appliesTo:["caregiver","client"],default:false},
+  {id:"multi_language",label:"Multi-Language Support",desc:"Spanish, Polish for clients/families (Chicago languages)",icon:"🌍",cat:"Mobile",appliesTo:["client"],default:false},
+  {id:"large_fonts",label:"Large Fonts / Accessibility Mode",desc:"One-tap accessibility for elderly clients",icon:"🔍",cat:"Mobile",appliesTo:["client"],default:true},
 ];
 
 const seedSurveys=[
@@ -1571,7 +1629,8 @@ function CaregiverPortal({user,clients,caregivers,careNotes,setCareNotes,inciden
   const [clockTime,setClockTime]=useState(now());
   const [travel,setTravel]=useState({miles:0,segments:[]});
   const [showExpForm,setShowExpForm]=useState(false);
-  const [expForm,setExpForm]=useState({clientId:"",category:"Mileage",description:"",amount:0,quantity:0,receipt:false,receiptNote:""});
+  const [viewReceipt,setViewReceipt]=useState(null);
+  const [expForm,setExpForm]=useState({clientId:"",category:"Mileage",description:"",amount:0,quantity:0,receipt:false,receiptNote:"",receiptPhoto:null});
   const [lateAlert,setLateAlert]=useState(null);
   const [showLateForm,setShowLateForm]=useState(null);
   const [lateReason,setLateReason]=useState("Traffic");
@@ -1648,15 +1707,22 @@ function CaregiverPortal({user,clients,caregivers,careNotes,setCareNotes,inciden
   const breakMin=shift?shift.breaks.reduce((s,b)=>s+(b.end?(b.end-b.start)/60000:(clockTime-b.start)/60000),0):0;
   const workMin=shiftDur-Math.round(breakMin);
 
-  const submitExpense=()=>{
+  const submitExpense=async()=>{
     if(!expForm.description||(!expForm.amount&&!expForm.quantity))return;
     const total=expForm.category==="Mileage"?expForm.quantity*MILEAGE_RATE:expForm.amount;
     const loc=GPS_LOCATIONS[expForm.clientId||shift?.clientId];
     const gps=loc?simGPS(loc):null;
     const cid=expForm.clientId||shift?.clientId||"";
-    const exp={id:"EX"+uid(),caregiverId:user.caregiverId,clientId:cid,date:today(),category:expForm.category,description:expForm.description,amount:total,receipt:expForm.receipt,receiptNote:expForm.receiptNote||"",status:"pending",gps:gps?gpsAddr(gps.lat,gps.lng):"",adminApproved:false};
+    const expId="EX"+uid();
+    // Upload receipt to Supabase if there's a photo
+    let photoUrl=expForm.receiptPhoto;
+    if(expForm.receiptPhoto&&expForm.receiptPhoto.startsWith("data:")){
+      const uploaded=await sbUploadReceipt(expForm.receiptPhoto,expId);
+      if(uploaded)photoUrl=uploaded;
+    }
+    const exp={id:expId,caregiverId:user.caregiverId,clientId:cid,date:today(),category:expForm.category,description:expForm.description,amount:total,receipt:expForm.receipt,receiptNote:expForm.receiptNote||"",receiptPhoto:photoUrl,status:"pending",gps:gps?gpsAddr(gps.lat,gps.lng):"",adminApproved:false};
     setExpenses(p=>[exp,...p]);
-    setExpForm({clientId:cid,category:"Mileage",description:"",amount:0,quantity:0,receipt:false,receiptNote:""});
+    setExpForm({clientId:cid,category:"Mileage",description:"",amount:0,quantity:0,receipt:false,receiptNote:"",receiptPhoto:null});
     setShowExpForm(false);
     // Notify admin only (not client)
     if(notify){
@@ -1776,6 +1842,7 @@ function CaregiverPortal({user,clients,caregivers,careNotes,setCareNotes,inciden
         {myNotes.slice(0,5).map(n=>{const cl=clients.find(c=>c.id===n.clientId);return <div key={n.id} style={{padding:"10px 20px",borderBottom:"var(--border-thin)"}}>
           <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"var(--t2)",marginBottom:4}}><span style={{fontWeight:600}}>{cl?.name}</span><span>{fmtRel(n.date)}</span></div>
           <div style={{fontSize:12.5,lineHeight:1.6}}>{n.text.slice(0,150)}{n.text.length>150?"...":""}</div>
+          {n.photos&&n.photos.length>0&&<div style={{display:"flex",gap:4,marginTop:6}}>{n.photos.slice(0,4).map(ph=><img key={ph.id} src={ph.url} alt="Task" style={{width:36,height:36,objectFit:"cover",border:"var(--border-thin)"}}/>)}{n.photos.length>4&&<span style={{fontSize:10,color:"var(--t2)",alignSelf:"center"}}>+{n.photos.length-4}</span>}</div>}
         </div>;})}
       </div>
     </div>}
@@ -1951,6 +2018,7 @@ function CaregiverPortal({user,clients,caregivers,careNotes,setCareNotes,inciden
       <div className="card">{myNotes.map(n=>{const cl=clients.find(c=>c.id===n.clientId);return <div key={n.id} style={{padding:"12px 20px",borderBottom:"var(--border-thin)"}}>
         <div style={{display:"flex",justifyContent:"space-between",marginBottom:4,fontSize:11}}><div style={{display:"flex",gap:6}}><span className={`tag ${NOTE_CATS[n.category]?.color||"tag-ok"}`}>{n.category}</span><span style={{fontWeight:600}}>{cl?.name}</span></div><span style={{color:"var(--t2)"}}>{fmtD(n.date)}</span></div>
         <div style={{fontSize:13,lineHeight:1.6}}>{n.text}</div>
+        {n.photos&&n.photos.length>0&&<div style={{display:"flex",gap:6,marginTop:8,flexWrap:"wrap"}}>{n.photos.map(ph=><a key={ph.id} href={ph.url} target="_blank" rel="noopener noreferrer"><img src={ph.url} alt="Task" style={{width:60,height:60,objectFit:"cover",border:"var(--border-thin)",cursor:"pointer"}}/></a>)}</div>}
       </div>;})}
       {myNotes.length===0&& <div className="empty">No care notes yet</div>}
       </div>
@@ -1985,10 +2053,24 @@ function CaregiverPortal({user,clients,caregivers,careNotes,setCareNotes,inciden
       {/* Expense History */}
       <div className="card"><div className="card-h"><h3>Submitted Expenses</h3></div>
         <div className="tw"><table><thead><tr><th>Date</th><th>Client</th><th>Category</th><th>Description</th><th>GPS</th><th>Receipt</th><th style={{textAlign:"right"}}>Amount</th><th>Status</th></tr></thead><tbody>
-          {myExpenses.sort((a,b)=>b.date.localeCompare(a.date)).map(e=>{const cl=clients.find(c=>c.id===e.clientId);return <tr key={e.id}><td>{fmtD(e.date)}</td><td style={{fontWeight:600}}>{cl?.name||"—"}</td><td><span className="tag tag-bl">{e.category}</span></td><td>{e.description}</td><td style={{fontSize:10}} title={e.gps}>{e.gps?"📍 "+e.gps.split(",")[0]:"—"}</td><td>{e.receipt?"📷":"—"}</td><td style={{textAlign:"right",fontWeight:600}}>${e.amount.toFixed(2)}</td><td><span className={`tag ${e.status==="approved"?"tag-ok":"tag-wn"}`}>{e.status}</span></td></tr>;})}
+          {myExpenses.sort((a,b)=>b.date.localeCompare(a.date)).map(e=>{const cl=clients.find(c=>c.id===e.clientId);return <tr key={e.id}><td>{fmtD(e.date)}</td><td style={{fontWeight:600}}>{cl?.name||"—"}</td><td><span className="tag tag-bl">{e.category}</span></td><td>{e.description}</td><td style={{fontSize:10}} title={e.gps}>{e.gps?"📍 "+e.gps.split(",")[0]:"—"}</td><td>{e.receiptPhoto?<img src={e.receiptPhoto} alt="Receipt" style={{width:32,height:32,objectFit:"cover",cursor:"pointer",border:"var(--border-thin)"}} onClick={()=>setViewReceipt(e)}/>:e.receipt?"📷":"—"}</td><td style={{textAlign:"right",fontWeight:600}}>${e.amount.toFixed(2)}</td><td><span className={`tag ${e.status==="approved"?"tag-ok":"tag-wn"}`}>{e.status}</span></td></tr>;})}
         </tbody></table></div>
         {myExpenses.length===0&& <div className="empty">No expenses submitted yet</div>}
       </div>
+      {/* Caregiver Receipt Viewer */}
+      {viewReceipt&& <div className="modal-bg" onClick={()=>setViewReceipt(null)}>
+        <div className="modal" style={{maxWidth:600,maxHeight:"90vh",overflow:"auto"}} onClick={ev=>ev.stopPropagation()}>
+          <div className="modal-h">Receipt — {viewReceipt.description}<button className="btn btn-sm btn-s" onClick={()=>setViewReceipt(null)}>✕</button></div>
+          <div className="modal-b" style={{textAlign:"center"}}>
+            <img src={viewReceipt.receiptPhoto} alt="Receipt" style={{maxWidth:"100%",maxHeight:"60vh",border:"var(--border-thin)"}}/>
+            <div style={{marginTop:12,padding:"10px 14px",background:"var(--bg)",fontSize:12,textAlign:"left"}}>
+              {viewReceipt.receiptNote&&<div style={{marginBottom:6}}><strong>Receipt details:</strong> {viewReceipt.receiptNote}</div>}
+              <div><strong>Date:</strong> {fmtD(viewReceipt.date)} · <strong>Amount:</strong> ${viewReceipt.amount.toFixed(2)}</div>
+              <div><strong>Status:</strong> <span className={`tag ${viewReceipt.status==="approved"?"tag-ok":"tag-wn"}`}>{viewReceipt.status}</span></div>
+            </div>
+          </div>
+        </div>
+      </div>}
     </div>}
 
     {/* ═══ TRAINING ═══ */}
@@ -2116,7 +2198,66 @@ function CaregiverPortal({user,clients,caregivers,careNotes,setCareNotes,inciden
           </div>
           {expForm.receipt&& <div>
             <div className="fi" style={{marginBottom:8}}><label>Receipt Details (store, last 4 digits, total shown)</label><input value={expForm.receiptNote} onChange={e=>setExpForm(f=>({...f,receiptNote:e.target.value}))} placeholder="e.g. Jewel-Osco receipt #4421, total $67.42"/></div>
-            <div style={{fontSize:11,color:"var(--t2)",lineHeight:1.6}}>📸 Take a photo of your receipt and keep it until the expense is approved. In production, you'll be able to upload receipt photos directly here.</div>
+            <div style={{marginTop:10}}>
+              <label style={{fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:.5,display:"block",marginBottom:6}}>📸 Receipt Photo</label>
+              {expForm.receiptPhoto? <div style={{display:"flex",gap:10,alignItems:"flex-start"}}>
+                <img src={expForm.receiptPhoto} alt="Receipt" style={{maxWidth:140,maxHeight:200,border:"var(--border-thin)",objectFit:"cover"}}/>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:11,color:"var(--ok)",fontWeight:600,marginBottom:6}}>✓ Receipt photo attached</div>
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                    <label className="btn btn-sm btn-s" style={{cursor:"pointer"}}>
+                      📷 Replace
+                      <input type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={async(e)=>{
+                        const file=e.target.files[0];if(!file)return;
+                        if(!file.type.startsWith("image/")){alert("Please select an image");return;}
+                        if(file.size>5*1024*1024){alert("Image must be under 5MB");return;}
+                        const reader=new FileReader();
+                        reader.onload=(ev)=>{
+                          const img=new Image();
+                          img.onload=()=>{
+                            const canvas=document.createElement("canvas");
+                            const max=800;let w=img.width,h=img.height;
+                            if(w>h){if(w>max){h=h*(max/w);w=max;}}else{if(h>max){w=w*(max/h);h=max;}}
+                            canvas.width=w;canvas.height=h;
+                            canvas.getContext("2d").drawImage(img,0,0,w,h);
+                            setExpForm(f=>({...f,receiptPhoto:canvas.toDataURL("image/jpeg",0.85)}));
+                          };
+                          img.src=ev.target.result;
+                        };
+                        reader.readAsDataURL(file);
+                      }}/>
+                    </label>
+                    <button type="button" className="btn btn-sm btn-s" style={{color:"var(--err)"}} onClick={()=>setExpForm(f=>({...f,receiptPhoto:null}))}>🗑 Remove</button>
+                  </div>
+                </div>
+              </div>
+              :
+              <div>
+                <label className="btn btn-p" style={{cursor:"pointer",display:"inline-flex",gap:6,alignItems:"center"}}>
+                  📷 Take Photo / Upload Receipt
+                  <input type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={async(e)=>{
+                    const file=e.target.files[0];if(!file)return;
+                    if(!file.type.startsWith("image/")){alert("Please select an image");return;}
+                    if(file.size>5*1024*1024){alert("Image must be under 5MB");return;}
+                    const reader=new FileReader();
+                    reader.onload=(ev)=>{
+                      const img=new Image();
+                      img.onload=()=>{
+                        const canvas=document.createElement("canvas");
+                        const max=800;let w=img.width,h=img.height;
+                        if(w>h){if(w>max){h=h*(max/w);w=max;}}else{if(h>max){w=w*(max/h);h=max;}}
+                        canvas.width=w;canvas.height=h;
+                        canvas.getContext("2d").drawImage(img,0,0,w,h);
+                        setExpForm(f=>({...f,receiptPhoto:canvas.toDataURL("image/jpeg",0.85)}));
+                      };
+                      img.src=ev.target.result;
+                    };
+                    reader.readAsDataURL(file);
+                  }}/>
+                </label>
+                <div style={{fontSize:10,color:"var(--t2)",marginTop:6}}>📱 On mobile, this will open your camera. Receipt is saved with the expense and visible to admin.</div>
+              </div>}
+            </div>
           </div>}
         </div>
 
@@ -2277,6 +2418,7 @@ function FamilyStandalonePortal({user,clients,caregivers,careNotes,events,family
       <div className="card">{clNotes.slice(0,15).map(n=>{const cg=caregivers.find(c=>c.id===n.caregiverId);return <div key={n.id} style={{padding:"14px 20px",borderBottom:"var(--border-thin)"}}>
         <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"var(--t2)",marginBottom:6}}><div style={{display:"flex",gap:6,alignItems:"center"}}><span className={`tag ${NOTE_CATS[n.category]?.color||"tag-ok"}`}>{n.category}</span><span style={{fontWeight:600}}>{cg?.name}</span></div><span>{fmtD(n.date)} {fmtT(n.date)}</span></div>
         <div style={{fontSize:13,lineHeight:1.7}}>{n.text}</div>
+        {n.photos&&n.photos.length>0&&<div style={{display:"flex",gap:6,marginTop:8,flexWrap:"wrap"}}>{n.photos.map(ph=><a key={ph.id} href={ph.url} target="_blank" rel="noopener noreferrer"><img src={ph.url} alt="Task" style={{width:80,height:80,objectFit:"cover",border:"var(--border-thin)",cursor:"pointer"}}/></a>)}</div>}
       </div>;})}
       {clNotes.length===0&&<div className="empty">No care notes yet</div>}
       </div>
@@ -2516,6 +2658,46 @@ export default function App(){
   const [invoices,setInvoices]=useState(seedInvoices);
   const [paySlips,setPaySlips]=useState(seedPaySlips);
   const [notifications,setNotifications]=useState([]);
+  // Feature flags: per-entity toggle map
+  // featureFlags = {clientId: {featureId: bool}, caregiverId: {featureId: bool}, global: {featureId: bool}}
+  const [featureFlags,setFeatureFlags]=useState(()=>{
+    const init={global:{}};
+    FEATURES.forEach(f=>init.global[f.id]=f.default);
+    return init;
+  });
+  // Helper: check if feature enabled for entity
+  const isFeatureEnabled=(featureId,entityId)=>{
+    if(entityId&&featureFlags[entityId]&&featureFlags[entityId][featureId]!==undefined)return featureFlags[entityId][featureId];
+    return featureFlags.global?.[featureId]??FEATURES.find(f=>f.id===featureId)?.default??false;
+  };
+  const toggleFeature=(featureId,entityId)=>{
+    setFeatureFlags(prev=>{
+      const next={...prev};
+      if(entityId){
+        if(!next[entityId])next[entityId]={};
+        else next[entityId]={...next[entityId]};
+        next[entityId][featureId]=!isFeatureEnabled(featureId,entityId);
+      }else{
+        next.global={...next.global,[featureId]:!isFeatureEnabled(featureId)};
+      }
+      return next;
+    });
+  };
+  // Audit log
+  const [auditLog,setAuditLog]=useState([]);
+  const logAction=(action,entity,detail)=>{setAuditLog(p=>[{id:"AL"+uid(),date:now().toISOString(),action,entity,detail,user:user?.name||"system"},...p].slice(0,500));};
+  // Live GPS positions of caregivers
+  const [livePositions,setLivePositions]=useState({});
+  // Shift swap requests
+  const [swapRequests,setSwapRequests]=useState([]);
+  // Supply inventory
+  const [supplies,setSupplies]=useState([
+    {id:"SP1",clientId:"CL1",item:"Gloves (medium)",qty:50,reorderAt:20,lastOrdered:"2026-02-15"},
+    {id:"SP2",clientId:"CL1",item:"Adult wipes",qty:8,reorderAt:5,lastOrdered:"2026-02-20"},
+    {id:"SP3",clientId:"CL2",item:"Gloves (large)",qty:15,reorderAt:20,lastOrdered:"2026-02-10"},
+    {id:"SP4",clientId:"CL2",item:"Diabetic test strips",qty:30,reorderAt:25,lastOrdered:"2026-03-01"},
+    {id:"SP5",clientId:"CL3",item:"Levodopa pills",qty:14,reorderAt:14,lastOrdered:"2026-02-28"},
+  ]);
   const [incidentPrompts,setIncidentPrompts]=useState(DEFAULT_INCIDENT_PROMPTS);
 
   // Load photos from Supabase Storage on startup
@@ -2562,13 +2744,13 @@ export default function App(){
 
   const nav=[
     {sec:"Overview"},{key:"dash",label:"Command Center",ico:"⚡"},
-    {sec:"Operations"},{key:"schedule",label:"Scheduling",ico:"📅",badge:draftScheds||null},{key:"clients",label:"Client Profiles",ico:"👤"},{key:"care",label:"Care Management",ico:"📋",badge:openInc||null},{key:"recon",label:"Reconciliation",ico:"🔍",badge:flaggedRecon||null},{key:"expenses",label:"Expenses",ico:"💰",badge:pendExp||null},
+    {sec:"Operations"},{key:"schedule",label:"Scheduling",ico:"📅",badge:draftScheds||null},{key:"clients",label:"Client Profiles",ico:"👤"},{key:"care",label:"Care Management",ico:"📋",badge:openInc||null},{key:"recon",label:"Reconciliation",ico:"🔍",badge:flaggedRecon||null},{key:"expenses",label:"Expenses",ico:"💰",badge:pendExp||null},{key:"gps_map",label:"Live GPS Map",ico:"📍"},{key:"shift_swap",label:"Shift Swaps",ico:"🔄",badge:swapRequests.filter(s=>s.status==="open").length||null},{key:"supplies",label:"Supply Tracking",ico:"📦",badge:supplies.filter(s=>s.qty<=s.reorderAt).length||null},
     {sec:"Finance"},{key:"billing",label:"Billing & Invoices",ico:"🧾"},{key:"payroll",label:"Payroll & Pay Slips",ico:"💵"},{key:"rates",label:"Rate Cards",ico:"💲"},
     {sec:"Growth"},{key:"training",label:"Training Academy",ico:"🎓"},{key:"recruiting",label:"Recruiting",ico:"📢",badge:newApps||null},{key:"marketing",label:"Marketing",ico:"📈"},{key:"events",label:"Events & Wellness",ico:"🌱"},
-    {sec:"Compliance"},{key:"compliance",label:"Compliance Center",ico:"🛡️",badge:overdue||null},
+    {sec:"Compliance"},{key:"compliance",label:"Compliance Center",ico:"🛡️",badge:overdue||null},{key:"audit",label:"Audit Log",ico:"📜"},
     {sec:"AI"},{key:"ai_hub",label:"AI Command",ico:"🤖"},
     {sec:"Connections"},{key:"portal",label:"Client Portal",ico:"🏠"},{key:"family",label:"Family Portal",ico:"👨‍👩‍👧"},{key:"team",label:"Team",ico:"👥"},
-    {sec:"Admin"},{key:"notifications",label:"Notifications",ico:"🔔",badge:notifications.filter(n=>!n.read).length||null},{key:"incident_settings",label:"AI Incident Settings",ico:"🤖"},{key:"users",label:"User Management",ico:"🔐"},
+    {sec:"Admin"},{key:"features",label:"Feature Management",ico:"⚙️"},{key:"notifications",label:"Notifications",ico:"🔔",badge:notifications.filter(n=>!n.read).length||null},{key:"incident_settings",label:"AI Incident Settings",ico:"🤖"},{key:"users",label:"User Management",ico:"🔐"},
   ];
 
   // Role-based nav filtering
@@ -2676,6 +2858,11 @@ export default function App(){
       {pg==="family"&&<FamilyPage clients={clients} familyMsgs={familyMsgs} setFamilyMsgs={setFamilyMsgs} careNotes={careNotes} incidents={incidents} events={events}/>}
       {pg==="team"&&<TeamPage caregivers={caregivers} setCaregivers={setCaregivers} progress={trainingProgress}/>}
       {pg==="users"&&<UserManagementPage allUsers={allUsers} setAllUsers={setAllUsers}/>}
+      {pg==="features"&&<FeatureManagementPage featureFlags={featureFlags} setFeatureFlags={setFeatureFlags} isFeatureEnabled={isFeatureEnabled} toggleFeature={toggleFeature} clients={clients} caregivers={caregivers} logAction={logAction}/>}
+      {pg==="gps_map"&&<LiveGPSMapPage caregivers={caregivers} clients={clients} schedules={schedules} livePositions={livePositions}/>}
+      {pg==="shift_swap"&&<ShiftSwapPage swapRequests={swapRequests} setSwapRequests={setSwapRequests} caregivers={caregivers} clients={clients} schedules={schedules} setSchedules={setSchedules} notify={notify}/>}
+      {pg==="supplies"&&<SupplyPage supplies={supplies} setSupplies={setSupplies} clients={clients}/>}
+      {pg==="audit"&&<AuditLogPage auditLog={auditLog} clients={clients} caregivers={caregivers} allUsers={allUsers}/>}
       {pg==="notifications"&&<NotificationsPage notifications={notifications} setNotifications={setNotifications} allUsers={allUsers} clients={clients} caregivers={caregivers} incidents={incidents} setIncidents={setIncidents} expenses={expenses} setExpenses={setExpenses}/>}
       {pg==="incident_settings"&&<IncidentSettingsPage prompts={incidentPrompts} setPrompts={setIncidentPrompts}/>}
       {pg==="ai_hub"&&<AIHub clients={clients} caregivers={caregivers} careNotes={careNotes} incidents={incidents} expenses={expenses} schedules={schedules} rateCards={rateCards} payCards={payCards} trainingProgress={trainingProgress} events={events} familyMsgs={familyMsgs} vitals={vitals} assignments={assignments} invoices={invoices} paySlips={paySlips} billingPeriods={billingPeriods} compliance={compliance} cgApplicants={cgApplicants} clientLeads={clientLeads}/>}
@@ -3330,6 +3517,7 @@ function ClientsPage({clients,setClients,sel,setSel,caregivers,careNotes,inciden
         </div>
         <span className={`tag ${NOTE_CATS[n.category]?.color||"tag-ok"}`} style={{marginBottom:6,display:"inline-flex"}}>{n.category}</span>
         <div style={{fontSize:13,lineHeight:1.6,marginTop:4}}>{n.text}</div>
+        {n.photos&&n.photos.length>0&&<div style={{display:"flex",gap:6,marginTop:8,flexWrap:"wrap"}}>{n.photos.map(ph=><a key={ph.id} href={ph.url} target="_blank" rel="noopener noreferrer"><img src={ph.url} alt="Task" style={{width:80,height:80,objectFit:"cover",border:"var(--border-thin)",cursor:"pointer"}}/></a>)}</div>}
       </div>;})}
       {clNotes.length===0&& <div className="empty">No care notes yet</div>}
     </div>}
@@ -3455,6 +3643,7 @@ function CarePage({clients,caregivers,chores,setChores,incidents,setIncidents,ca
             <span style={{fontSize:11,color:"var(--t2)"}}>{fmtD(n.date)} {fmtT(n.date)}</span>
           </div>
           <div style={{fontSize:13,lineHeight:1.6}}>{n.text}</div>
+          {n.photos&&n.photos.length>0&&<div style={{display:"flex",gap:6,marginTop:8,flexWrap:"wrap"}}>{n.photos.map(ph=><a key={ph.id} href={ph.url} target="_blank" rel="noopener noreferrer"><img src={ph.url} alt="Task" style={{width:60,height:60,objectFit:"cover",border:"var(--border-thin)",cursor:"pointer"}}/></a>)}</div>}
         </div>;})}
     </div>}
 
@@ -3493,9 +3682,81 @@ function CarePage({clients,caregivers,chores,setChores,incidents,setIncidents,ca
 }
 
 function NoteForm({clients,caregivers,onSave}){
-  const [f,sF]=useState({clientId:clients[0]?.id||"CL1",caregiverId:caregivers[0]?.id||"CG1",category:"General",text:"",subData:{}});
+  const [f,sF]=useState({clientId:clients[0]?.id||"CL1",caregiverId:caregivers[0]?.id||"CG1",category:"General",text:"",subData:{},photos:[]});
+  const [aiLoading,setAiLoading]=useState(false);
+  const [aiError,setAiError]=useState("");
+  const [uploadingPhoto,setUploadingPhoto]=useState(false);
   const cat=NOTE_CATS[f.category];
   const updateSub=(key,val)=>sF(p=>({...p,subData:{...p.subData,[key]:val}}));
+
+  // Add photo to note
+  const addPhoto=async(file)=>{
+    if(!file)return;
+    if(!file.type.startsWith("image/")){alert("Please select an image");return;}
+    if(file.size>5*1024*1024){alert("Image must be under 5MB");return;}
+    setUploadingPhoto(true);
+    const reader=new FileReader();
+    reader.onload=async(ev)=>{
+      const img=new Image();
+      img.onload=async()=>{
+        const canvas=document.createElement("canvas");
+        const max=800;let w=img.width,h=img.height;
+        if(w>h){if(w>max){h=h*(max/w);w=max;}}else{if(h>max){w=w*(max/h);h=max;}}
+        canvas.width=w;canvas.height=h;
+        canvas.getContext("2d").drawImage(img,0,0,w,h);
+        const base64=canvas.toDataURL("image/jpeg",0.85);
+        // Upload to Supabase
+        const photoId="note_"+Date.now()+"_"+Math.random().toString(36).slice(2,7);
+        const url=await sbUploadReceipt(base64,photoId);
+        sF(p=>({...p,photos:[...(p.photos||[]),{id:photoId,url:url||base64,timestamp:new Date().toISOString()}]}));
+        setUploadingPhoto(false);
+      };
+      img.src=ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+  const removePhoto=(id)=>sF(p=>({...p,photos:(p.photos||[]).filter(ph=>ph.id!==id)}));
+
+  // AI Care Note Assistant — expands brief notes to full clinical documentation
+  const aiExpand=async()=>{
+    if(!f.text.trim()){setAiError("Please write a brief note first, then click AI Expand");return;}
+    setAiLoading(true);setAiError("");
+    try{
+      const cl=clients.find(c=>c.id===f.clientId);
+      const cg=caregivers.find(c=>c.id===f.caregiverId);
+      const subSummary=Object.entries(f.subData).filter(([_,v])=>v&&v!=="").map(([k,v])=>{const fl=cat?.fields?.find(x=>x.key===k);return `${fl?.label||k}: ${typeof v==="boolean"?(v?"yes":"no"):v}`;}).join(", ");
+      const prompt=`You are an expert home care documentation assistant for CWIN At Home in Chicago. Expand this brief care note into professional, objective clinical documentation suitable for a home care record.
+
+CLIENT: ${cl?.name}, age ${cl?.age}
+DIAGNOSES: ${cl?.dx?.join(", ")||"none"}
+CAREGIVER: ${cg?.name}
+CATEGORY: ${f.category}
+${subSummary?"TRACKED DATA: "+subSummary:""}
+
+CAREGIVER'S BRIEF NOTE:
+"${f.text}"
+
+INSTRUCTIONS:
+- Expand into 2-4 sentences of professional clinical documentation
+- Use objective, observable language (not opinions)
+- Match home care charting style: clear, factual, time-stamped where relevant
+- Include any relevant client status, response to care, and observations
+- Do NOT make up specific data not provided
+- Do NOT use medical diagnoses unless mentioned in the original note
+- Output ONLY the expanded note text, no preamble or explanation`;
+      
+      const resp=await fetch("https://api.anthropic.com/v1/messages",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:500,messages:[{role:"user",content:prompt}]})
+      });
+      const data=await resp.json();
+      const expanded=data.content?.find(c=>c.type==="text")?.text||"";
+      if(expanded)sF(p=>({...p,text:expanded.trim()}));
+      else setAiError("AI returned no content. Try again.");
+    }catch(e){setAiError("AI error: "+(e.message||"unknown"));}
+    setAiLoading(false);
+  };
 
   return <div className="modal-b">
     <div className="fg" style={{marginBottom:12}}>
@@ -3534,8 +3795,18 @@ function NoteForm({clients,caregivers,onSave}){
       </div>
     </div>}
 
-    {/* Narrative note */}
-    <div className="fi" style={{marginBottom:12}}><label>Narrative Note</label><textarea rows={4} value={f.text} onChange={e=>sF({...f,text:e.target.value})} placeholder="Document care provided, observations, client status, and any concerns..."/></div>
+    {/* Narrative note with AI Expand button */}
+    <div className="fi" style={{marginBottom:12}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+        <label style={{margin:0}}>Narrative Note</label>
+        <button type="button" className="btn btn-sm" style={{background:"linear-gradient(135deg,#5b21b6,#7c3aed)",color:"#fff",fontSize:10,padding:"4px 10px"}} onClick={aiExpand} disabled={aiLoading}>
+          {aiLoading?"⏳ AI Working...":"✨ AI Expand to Full Documentation"}
+        </button>
+      </div>
+      <textarea rows={5} value={f.text} onChange={e=>sF({...f,text:e.target.value})} placeholder="Brief note (e.g. 'Becky had good day, ate lunch, walked'). Click ✨ AI Expand to convert to full clinical documentation."/>
+      {aiError&&<div style={{fontSize:11,color:"var(--err)",marginTop:4}}>{aiError}</div>}
+      <div style={{fontSize:10,color:"var(--t2)",marginTop:4}}>💡 Tip: Write 1-2 quick sentences, then AI will expand to professional clinical documentation.</div>
+    </div>
 
     {/* Auto-summary of sub-data */}
     {Object.keys(f.subData).length>0&& <div style={{padding:10,background:"var(--bg)",marginBottom:12,fontSize:11,color:"var(--t2)",lineHeight:1.7}}>
@@ -3545,12 +3816,40 @@ function NoteForm({clients,caregivers,onSave}){
       }).join(" | ")}
     </div>}
 
+    {/* Photo Documentation */}
+    <div style={{padding:14,background:"var(--bg)",marginBottom:12,border:"1px dashed var(--bdr)"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+        <label style={{fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:.8,color:"var(--t2)",margin:0}}>📸 Photo Documentation</label>
+        <span style={{fontSize:10,color:"var(--t2)"}}>{(f.photos||[]).length} photo{(f.photos||[]).length===1?"":"s"} attached</span>
+      </div>
+      <div style={{fontSize:10,color:"var(--t2)",marginBottom:10}}>📱 Take photos to document tasks completed (meal prep, room cleaned, wound care, etc.). Photos are saved with the note.</div>
+      
+      {/* Photo grid */}
+      {(f.photos||[]).length>0&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(80px,1fr))",gap:6,marginBottom:10}}>
+        {f.photos.map(ph=><div key={ph.id} style={{position:"relative"}}>
+          <img src={ph.url} alt="Task" style={{width:"100%",height:80,objectFit:"cover",border:"var(--border-thin)"}}/>
+          <button type="button" onClick={()=>removePhoto(ph.id)} style={{position:"absolute",top:2,right:2,width:18,height:18,padding:0,border:"none",background:"rgba(0,0,0,.7)",color:"#fff",cursor:"pointer",fontSize:11,lineHeight:1}}>✕</button>
+        </div>)}
+      </div>}
+
+      {/* Upload buttons */}
+      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+        <label className="btn btn-sm btn-p" style={{cursor:"pointer",display:"inline-flex",gap:4,alignItems:"center"}}>
+          {uploadingPhoto?"⏳ Uploading...":"📷 Take Photo"}
+          <input type="file" accept="image/*" capture="environment" style={{display:"none"}} disabled={uploadingPhoto} onChange={e=>{addPhoto(e.target.files[0]);e.target.value="";}}/>
+        </label>
+        <label className="btn btn-sm btn-s" style={{cursor:"pointer",display:"inline-flex",gap:4,alignItems:"center"}}>
+          🖼 Upload from Gallery
+          <input type="file" accept="image/*" style={{display:"none"}} disabled={uploadingPhoto} onChange={e=>{addPhoto(e.target.files[0]);e.target.value="";}}/>
+        </label>
+      </div>
+    </div>
+
     <button className="btn btn-p" style={{width:"100%"}} onClick={()=>{
-      // Build enriched text with sub-data
       const subSummary=Object.entries(f.subData).filter(([_,v])=>v&&v!=="").map(([k,v])=>{const fl=cat?.fields?.find(x=>x.key===k);return `${fl?.label||k}: ${typeof v==="boolean"?(v?"Completed":"Not done"):v}`;}).join(". ");
       const fullText=subSummary?(f.text?`${f.text}\n\n[${f.category}] ${subSummary}`:subSummary):f.text;
-      if(fullText) onSave({...f,text:fullText});
-    }} disabled={!f.text&&Object.keys(f.subData).filter(k=>f.subData[k]&&f.subData[k]!=="").length===0}>Save Note</button>
+      if(fullText||(f.photos||[]).length>0) onSave({...f,text:fullText});
+    }} disabled={(!f.text&&Object.keys(f.subData).filter(k=>f.subData[k]&&f.subData[k]!=="").length===0&&(f.photos||[]).length===0)||uploadingPhoto}>Save Note</button>
   </div>;
 }
 
@@ -3575,6 +3874,7 @@ function ExpensesPage({expenses,setExpenses,caregivers,clients}){
   const pending=expenses.filter(e=>e.status==="pending");
   const approved=expenses.filter(e=>e.status==="approved");
   const [showAdd,setShowAdd]=useState(false);
+  const [viewReceipt,setViewReceipt]=useState(null);
   const [f,sF]=useState({caregiverId:"CG1",clientId:"CL1",category:"Groceries",description:"",amount:0,receipt:false,gps:""});
 
   const submit=()=>{if(!f.description||f.amount<=0)return;setExpenses(p=>[{id:"EX"+uid(),date:today(),...f,status:"pending"},...p]);sF({caregiverId:"CG1",clientId:"CL1",category:"Groceries",description:"",amount:0,receipt:false,gps:""});setShowAdd(false);};
@@ -3608,7 +3908,7 @@ function ExpensesPage({expenses,setExpenses,caregivers,clients}){
           return <tr key={e.id}><td>{fmtD(e.date)}</td><td>{cg?.name}</td><td style={{fontWeight:600}}>{cl?.name}</td>
             <td><span className="tag tag-bl">{e.category}</span></td><td>{e.description}</td>
             <td style={{textAlign:"right",fontWeight:700}}>{$(e.amount)}</td>
-            <td>{e.receipt?"📷":"—"}</td>
+            <td>{e.receiptPhoto?<img src={e.receiptPhoto} alt="Receipt" style={{width:32,height:32,objectFit:"cover",cursor:"pointer",border:"var(--border-thin)"}} onClick={()=>setViewReceipt(e)}/>:e.receipt?"📷":"—"}</td>
             <td style={{fontSize:10,maxWidth:100}} title={e.gps}>{e.gps?`📍 ${e.gps.split(",")[0]}`:"—"}</td>
             <td><span className={`tag ${e.status==="approved"?"tag-ok":"tag-wn"}`}>{e.status}</span></td>
             <td>{e.status==="pending"&&<div style={{display:"flex",gap:4}}>
@@ -3617,6 +3917,23 @@ function ExpensesPage({expenses,setExpenses,caregivers,clients}){
             </div>}</td></tr>;})}
       </tbody></table></div>
     </div>
+
+    {/* Receipt Viewer Modal */}
+    {viewReceipt&& <div className="modal-bg" onClick={()=>setViewReceipt(null)}>
+      <div className="modal" style={{maxWidth:600,maxHeight:"90vh",overflow:"auto"}} onClick={e=>e.stopPropagation()}>
+        <div className="modal-h">Receipt — {viewReceipt.description}<button className="btn btn-sm btn-s" onClick={()=>setViewReceipt(null)}>✕</button></div>
+        <div className="modal-b" style={{textAlign:"center"}}>
+          <img src={viewReceipt.receiptPhoto} alt="Receipt" style={{maxWidth:"100%",maxHeight:"60vh",border:"var(--border-thin)"}}/>
+          <div style={{marginTop:12,padding:"10px 14px",background:"var(--bg)",fontSize:12,textAlign:"left"}}>
+            {viewReceipt.receiptNote&&<div style={{marginBottom:6}}><strong>Receipt details:</strong> {viewReceipt.receiptNote}</div>}
+            <div><strong>Caregiver:</strong> {caregivers.find(c=>c.id===viewReceipt.caregiverId)?.name}</div>
+            <div><strong>Client:</strong> {clients.find(c=>c.id===viewReceipt.clientId)?.name}</div>
+            <div><strong>Date:</strong> {fmtD(viewReceipt.date)} · <strong>Amount:</strong> ${viewReceipt.amount.toFixed(2)}</div>
+            {viewReceipt.gps&&<div><strong>📍 GPS:</strong> {viewReceipt.gps}</div>}
+          </div>
+        </div>
+      </div>
+    </div>}
   </div>;
 }
 
@@ -4849,6 +5166,347 @@ function MarketingPage({campaigns,setCampaigns,leads,applicants}){
 // ═══════════════════════════════════════════════════════════════════════
 // NOTIFICATIONS CENTER — Admin/Owner
 // ═══════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════
+// FEATURE MANAGEMENT — Toggle features per client/caregiver
+// ═══════════════════════════════════════════════════════════════════════
+function FeatureManagementPage({featureFlags,setFeatureFlags,isFeatureEnabled,toggleFeature,clients,caregivers,logAction}){
+  const [tab,setTab]=useState("global");
+  const [selEntity,setSelEntity]=useState("");
+  const cats=[...new Set(FEATURES.map(f=>f.cat))];
+
+  const FeatureRow=({f,entityId,entityType})=>{
+    const enabled=isFeatureEnabled(f.id,entityId);
+    const overridden=entityId&&featureFlags[entityId]?.[f.id]!==undefined;
+    const applies=!entityType||f.appliesTo.includes(entityType);
+    if(!applies)return null;
+    return <div style={{padding:"14px 18px",borderBottom:"var(--border-thin)",display:"flex",gap:14,alignItems:"center"}}>
+      <div style={{fontSize:24,width:36,textAlign:"center"}}>{f.icon}</div>
+      <div style={{flex:1}}>
+        <div style={{fontWeight:600,fontSize:13,display:"flex",alignItems:"center",gap:6}}>
+          {f.label}
+          {overridden&&<span style={{fontSize:9,padding:"2px 6px",background:"var(--ochre)",color:"#fff"}}>OVERRIDE</span>}
+        </div>
+        <div style={{fontSize:11,color:"var(--t2)",marginTop:2}}>{f.desc}</div>
+      </div>
+      <label style={{position:"relative",display:"inline-block",width:46,height:24,cursor:"pointer"}}>
+        <input type="checkbox" checked={enabled} onChange={()=>{toggleFeature(f.id,entityId);if(logAction)logAction("feature_toggle",entityId||"global","Toggled "+f.label+" to "+(!enabled?"ON":"OFF"));}} style={{opacity:0,width:0,height:0}}/>
+        <span style={{position:"absolute",top:0,left:0,right:0,bottom:0,background:enabled?"var(--ok)":"#ccc",transition:".2s"}}>
+          <span style={{position:"absolute",height:18,width:18,left:enabled?25:3,top:3,background:"#fff",transition:".2s"}}/>
+        </span>
+      </label>
+    </div>;
+  };
+
+  return <div>
+    <div className="hdr"><div><h2>Feature Management</h2><div className="hdr-sub">Enable/disable features globally or per client/caregiver</div></div></div>
+
+    <div className="tab-row">
+      <button className={`tab-btn ${tab==="global"?"act":""}`} onClick={()=>setTab("global")}>🌐 Global Defaults</button>
+      <button className={`tab-btn ${tab==="clients"?"act":""}`} onClick={()=>setTab("clients")}>👤 Per Client</button>
+      <button className={`tab-btn ${tab==="caregivers"?"act":""}`} onClick={()=>setTab("caregivers")}>👩‍⚕️ Per Caregiver</button>
+    </div>
+
+    {tab==="global"&& <div>
+      <div className="ai-card"><h4>🌐 Global Defaults</h4><p>These are the default settings for all clients and caregivers. Override individually using the Per-Client or Per-Caregiver tabs.</p></div>
+      {cats.map(cat=> <div key={cat} className="card" style={{marginBottom:14}}>
+        <div className="card-h"><h3>{cat==="AI"?"🤖 AI Features":cat==="Operations"?"⚙️ Operations":cat==="Compliance"?"🛡️ Compliance & Trust":cat==="Mobile"?"📱 Mobile & Accessibility":cat}</h3></div>
+        {FEATURES.filter(f=>f.cat===cat).map(f=> <FeatureRow key={f.id} f={f} entityId={null}/>)}
+      </div>)}
+    </div>}
+
+    {tab==="clients"&& <div>
+      <div className="hdr" style={{marginBottom:8}}><div></div>
+        <select value={selEntity} onChange={e=>setSelEntity(e.target.value)} style={{padding:"8px 12px",border:"var(--border-thin)",fontWeight:600,minWidth:240}}>
+          <option value="">Select a client</option>
+          {clients.filter(c=>c.status!=="archived").map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+      </div>
+      {!selEntity&&<div className="empty">Select a client to manage their feature settings</div>}
+      {selEntity&&<>
+        <div className="ai-card"><h4>👤 {clients.find(c=>c.id===selEntity)?.name}</h4><p>Override global defaults for this client. Toggles in green are enabled. The OVERRIDE badge shows where this client differs from the global default.</p></div>
+        {cats.map(cat=>{
+          const feats=FEATURES.filter(f=>f.cat===cat&&f.appliesTo.includes("client"));
+          if(feats.length===0)return null;
+          return <div key={cat} className="card" style={{marginBottom:14}}>
+            <div className="card-h"><h3>{cat==="AI"?"🤖 AI Features":cat==="Operations"?"⚙️ Operations":cat==="Compliance"?"🛡️ Compliance":cat==="Mobile"?"📱 Mobile":cat}</h3></div>
+            {feats.map(f=> <FeatureRow key={f.id} f={f} entityId={selEntity} entityType="client"/>)}
+          </div>;
+        })}
+      </>}
+    </div>}
+
+    {tab==="caregivers"&& <div>
+      <div className="hdr" style={{marginBottom:8}}><div></div>
+        <select value={selEntity} onChange={e=>setSelEntity(e.target.value)} style={{padding:"8px 12px",border:"var(--border-thin)",fontWeight:600,minWidth:240}}>
+          <option value="">Select a caregiver</option>
+          {caregivers.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+      </div>
+      {!selEntity&&<div className="empty">Select a caregiver to manage their feature settings</div>}
+      {selEntity&&<>
+        <div className="ai-card"><h4>👩‍⚕️ {caregivers.find(c=>c.id===selEntity)?.name}</h4><p>Override global defaults for this caregiver. The OVERRIDE badge shows where this caregiver differs from the global default.</p></div>
+        {cats.map(cat=>{
+          const feats=FEATURES.filter(f=>f.cat===cat&&f.appliesTo.includes("caregiver"));
+          if(feats.length===0)return null;
+          return <div key={cat} className="card" style={{marginBottom:14}}>
+            <div className="card-h"><h3>{cat==="AI"?"🤖 AI Features":cat==="Operations"?"⚙️ Operations":cat==="Compliance"?"🛡️ Compliance":cat==="Mobile"?"📱 Mobile":cat}</h3></div>
+            {feats.map(f=> <FeatureRow key={f.id} f={f} entityId={selEntity} entityType="caregiver"/>)}
+          </div>;
+        })}
+      </>}
+    </div>}
+  </div>;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// LIVE GPS MAP — Real-time caregiver locations
+// ═══════════════════════════════════════════════════════════════════════
+function LiveGPSMapPage({caregivers,clients,schedules,livePositions}){
+  const today_=today();
+  const todayShifts=(schedules||[]).filter(s=>s.date===today_&&s.status==="published");
+  const [selCG,setSelCG]=useState(null);
+
+  // Mock live positions if none set
+  const mockPositions={
+    CG1:{lat:41.9034,lng:-87.6276,accuracy:8,timestamp:Date.now()-120000,address:"Near 30 E Elm St, Chicago",speed:0,status:"on_shift"},
+    CG2:{lat:41.9421,lng:-87.6516,accuracy:12,timestamp:Date.now()-340000,address:"Near 3930 N Pine Grove Ave",speed:0,status:"on_shift"},
+    CG3:{lat:41.9742,lng:-87.6502,accuracy:15,timestamp:Date.now()-90000,address:"En route to Steven Brown's",speed:25,status:"traveling"},
+    CG4:{lat:41.8851,lng:-87.6228,accuracy:20,timestamp:Date.now()-1200000,address:"Off duty - Loop area",speed:0,status:"off_duty"},
+  };
+  const positions={...mockPositions,...livePositions};
+
+  return <div>
+    <div className="hdr"><div><h2>Live GPS Map</h2><div className="hdr-sub">Real-time caregiver locations · Last updated {new Date().toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}</div></div>
+      <button className="btn btn-sm btn-s" onClick={()=>window.location.reload()}>🔄 Refresh</button>
+    </div>
+
+    <div className="sg">
+      <div className="sc ok"><span className="sl">On Shift</span><span className="sv">{caregivers.filter(c=>positions[c.id]?.status==="on_shift").length}</span><span className="ss">Active right now</span></div>
+      <div className="sc bl"><span className="sl">Traveling</span><span className="sv">{caregivers.filter(c=>positions[c.id]?.status==="traveling").length}</span><span className="ss">En route to client</span></div>
+      <div className="sc"><span className="sl">Off Duty</span><span className="sv">{caregivers.filter(c=>positions[c.id]?.status==="off_duty"||!positions[c.id]).length}</span><span className="ss">Not working</span></div>
+      <div className="sc wn"><span className="sl">Today's Shifts</span><span className="sv">{todayShifts.length}</span><span className="ss">{todayShifts.filter(s=>positions[s.caregiverId]?.status==="on_shift").length} in progress</span></div>
+    </div>
+
+    <div style={{display:"grid",gridTemplateColumns:"320px 1fr",gap:14}}>
+      {/* Caregiver List */}
+      <div className="card" style={{maxHeight:600,overflow:"auto"}}>
+        <div className="card-h"><h3>Caregivers ({caregivers.length})</h3></div>
+        {caregivers.map(cg=>{const pos=positions[cg.id];const minsAgo=pos?Math.floor((Date.now()-pos.timestamp)/60000):null;return <div key={cg.id} onClick={()=>setSelCG(cg.id)} style={{padding:"12px 16px",borderBottom:"var(--border-thin)",cursor:"pointer",background:selCG===cg.id?"var(--bg)":"transparent"}}>
+          <div style={{display:"flex",gap:10,alignItems:"center"}}>
+            <div style={{width:10,height:10,borderRadius:"50%",background:pos?.status==="on_shift"?"var(--ok)":pos?.status==="traveling"?"var(--blue)":"#999",flexShrink:0}}/>
+            <div style={{flex:1}}>
+              <div style={{fontWeight:600,fontSize:13}}>{cg.name}</div>
+              {pos?<div style={{fontSize:10,color:"var(--t2)"}}>{pos.address}</div>:<div style={{fontSize:10,color:"var(--t2)"}}>No GPS data</div>}
+              {minsAgo!=null&&<div style={{fontSize:10,color:minsAgo>10?"var(--err)":"var(--t2)"}}>{minsAgo<1?"Just now":minsAgo+" min ago"}</div>}
+            </div>
+          </div>
+        </div>;})}
+      </div>
+
+      {/* Map View (visual representation since we can't load real maps in artifact) */}
+      <div className="card" style={{minHeight:600,position:"relative",background:"linear-gradient(135deg,#e8f0e8 0%,#d4e0d4 100%)",overflow:"hidden"}}>
+        <div style={{position:"absolute",top:10,left:10,background:"#fff",padding:"6px 12px",fontSize:11,fontWeight:600,zIndex:10}}>Chicago Metro Area</div>
+        {/* Mock map dots */}
+        {caregivers.map(cg=>{const pos=positions[cg.id];if(!pos)return null;
+          // Mock x/y based on lat/lng (offset from center)
+          const x=((pos.lng+87.65)*1500)+50;const y=((-pos.lat+41.95)*1500)+50;
+          return <div key={cg.id} onClick={()=>setSelCG(cg.id)} style={{position:"absolute",left:x+"px",top:y+"px",cursor:"pointer",zIndex:selCG===cg.id?20:5}}>
+            <div style={{width:32,height:32,borderRadius:"50%",background:pos.status==="on_shift"?"var(--ok)":pos.status==="traveling"?"var(--blue)":"#999",border:"3px solid #fff",boxShadow:"0 2px 8px rgba(0,0,0,.3)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:700,fontSize:11}}>{cg.name.split(" ").map(n=>n[0]).join("")}</div>
+            {selCG===cg.id&&<div style={{position:"absolute",top:38,left:-80,width:200,background:"#fff",padding:"10px 12px",border:"var(--border-thin)",fontSize:11,boxShadow:"0 4px 16px rgba(0,0,0,.15)"}}>
+              <div style={{fontWeight:700,marginBottom:4}}>{cg.name}</div>
+              <div style={{color:"var(--t2)"}}>{pos.address}</div>
+              <div style={{color:"var(--t2)",marginTop:4}}>Status: {pos.status.replace("_"," ")}</div>
+              <div style={{color:"var(--t2)"}}>Speed: {pos.speed||0} mph</div>
+              <div style={{color:"var(--t2)"}}>Updated {Math.floor((Date.now()-pos.timestamp)/60000)} min ago</div>
+            </div>}
+          </div>;
+        })}
+        {/* Client markers */}
+        {clients.filter(c=>c.status==="active").map((cl,i)=>{const x=200+i*120;const y=350;return <div key={cl.id} style={{position:"absolute",left:x+"px",top:y+"px"}}>
+          <div style={{width:24,height:24,background:"#070707",color:"#fff",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center"}}>🏠</div>
+          <div style={{fontSize:9,fontWeight:600,marginTop:2,whiteSpace:"nowrap"}}>{cl.name.split(" ")[0]}</div>
+        </div>;})}
+        <div style={{position:"absolute",bottom:10,left:10,background:"#fff",padding:"8px 12px",fontSize:10,display:"flex",gap:14}}>
+          <span>🟢 On Shift</span><span>🔵 Traveling</span><span>⚪ Off Duty</span><span>🏠 Client</span>
+        </div>
+      </div>
+    </div>
+
+    <div style={{marginTop:14,padding:"12px 16px",background:"var(--bg)",fontSize:11,color:"var(--t2)"}}>
+      <strong>Note:</strong> Real-time GPS requires caregivers to enable location sharing on their mobile device during shifts. This view shows mock positions for demo purposes. Production version uses caregiver phone GPS with 30-second refresh.
+    </div>
+  </div>;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// SUPPLY TRACKING
+// ═══════════════════════════════════════════════════════════════════════
+function SupplyPage({supplies,setSupplies,clients}){
+  const [showAdd,setShowAdd]=useState(false);
+  const [form,setForm]=useState({clientId:"",item:"",qty:0,reorderAt:0});
+  const lowSupplies=supplies.filter(s=>s.qty<=s.reorderAt);
+
+  return <div>
+    <div className="hdr"><div><h2>Supply Tracking</h2><div className="hdr-sub">Inventory and auto-reorder alerts</div></div>
+      <button className="btn btn-p btn-sm" onClick={()=>{setForm({clientId:"",item:"",qty:0,reorderAt:0});setShowAdd(true);}}>+ Add Supply</button>
+    </div>
+
+    <div className="sg">
+      <div className="sc ok"><span className="sl">Total Items</span><span className="sv">{supplies.length}</span></div>
+      <div className="sc er"><span className="sl">Low Stock</span><span className="sv">{lowSupplies.length}</span><span className="ss">Need reorder</span></div>
+      <div className="sc bl"><span className="sl">Clients Tracked</span><span className="sv">{[...new Set(supplies.map(s=>s.clientId))].length}</span></div>
+    </div>
+
+    {lowSupplies.length>0&&<div className="ai-card" style={{background:"linear-gradient(135deg,#3d0000,#1a0000)",color:"#fff"}}>
+      <h4>⚠️ Reorder Alert</h4>
+      <p>{lowSupplies.length} item{lowSupplies.length>1?"s":""} below reorder threshold: {lowSupplies.map(s=>{const c=clients.find(cl=>cl.id===s.clientId);return s.item+" ("+c?.name+")"}).join(", ")}</p>
+    </div>}
+
+    {clients.filter(c=>c.status==="active").map(cl=>{const cs=supplies.filter(s=>s.clientId===cl.id);if(cs.length===0)return null;return <div key={cl.id} className="card" style={{marginBottom:14}}>
+      <div className="card-h"><h3>{cl.name}</h3></div>
+      <div className="tw"><table><thead><tr><th>Item</th><th>Qty on Hand</th><th>Reorder At</th><th>Status</th><th>Last Ordered</th><th></th></tr></thead><tbody>
+        {cs.map(s=>{const low=s.qty<=s.reorderAt;return <tr key={s.id}>
+          <td style={{fontWeight:600}}>{s.item}</td>
+          <td><input type="number" value={s.qty} onChange={e=>setSupplies(p=>p.map(x=>x.id===s.id?{...x,qty:parseInt(e.target.value)||0}:x))} style={{width:70}}/></td>
+          <td>{s.reorderAt}</td>
+          <td><span className={`tag ${low?"tag-er":"tag-ok"}`}>{low?"⚠️ LOW":"✓ OK"}</span></td>
+          <td>{fmtD(s.lastOrdered)}</td>
+          <td>{low&&<button className="btn btn-sm btn-ok" onClick={()=>setSupplies(p=>p.map(x=>x.id===s.id?{...x,qty:x.qty+50,lastOrdered:today()}:x))}>📦 Reorder</button>}</td>
+        </tr>;})}
+      </tbody></table></div>
+    </div>;})}
+
+    {showAdd&&<div className="modal-bg" onClick={()=>setShowAdd(false)}><div className="modal" onClick={e=>e.stopPropagation()}>
+      <div className="modal-h">Add Supply<button className="btn btn-sm btn-s" onClick={()=>setShowAdd(false)}>✕</button></div>
+      <div className="modal-b">
+        <div className="fi" style={{marginBottom:10}}><label>Client</label><select value={form.clientId} onChange={e=>setForm(p=>({...p,clientId:e.target.value}))}><option value="">Select</option>{clients.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+        <div className="fi" style={{marginBottom:10}}><label>Item Name</label><input value={form.item} onChange={e=>setForm(p=>({...p,item:e.target.value}))} placeholder="e.g. Gloves (medium)"/></div>
+        <div className="fg" style={{marginBottom:10}}>
+          <div className="fi"><label>Current Qty</label><input type="number" value={form.qty} onChange={e=>setForm(p=>({...p,qty:parseInt(e.target.value)||0}))}/></div>
+          <div className="fi"><label>Reorder At</label><input type="number" value={form.reorderAt} onChange={e=>setForm(p=>({...p,reorderAt:parseInt(e.target.value)||0}))}/></div>
+        </div>
+        <button className="btn btn-p" style={{width:"100%"}} disabled={!form.clientId||!form.item} onClick={()=>{setSupplies(p=>[...p,{id:"SP"+uid(),...form,lastOrdered:today()}]);setShowAdd(false);}}>Add Supply</button>
+      </div>
+    </div></div>}
+  </div>;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// SHIFT SWAP REQUESTS
+// ═══════════════════════════════════════════════════════════════════════
+function ShiftSwapPage({swapRequests,setSwapRequests,caregivers,clients,schedules,setSchedules,notify}){
+  const [showNew,setShowNew]=useState(false);
+  const [form,setForm]=useState({scheduleId:"",reason:"",notes:""});
+  const open=swapRequests.filter(s=>s.status==="open");
+  const completed=swapRequests.filter(s=>s.status!=="open");
+
+  // AI: Find qualified replacements
+  const findReplacements=(req)=>{
+    const sched=schedules.find(s=>s.id===req.scheduleId);
+    if(!sched)return[];
+    return caregivers.filter(c=>c.id!==sched.caregiverId).map(c=>{
+      let score=50;
+      // Mock scoring based on certs
+      if(c.certs?.length>=3)score+=20;
+      if(c.certs?.length>=2)score+=10;
+      // Mock availability check
+      const conflicts=schedules.filter(s=>s.caregiverId===c.id&&s.date===sched.date);
+      if(conflicts.length>0)score-=30;
+      return{caregiver:c,score:Math.max(0,Math.min(100,score)),available:conflicts.length===0};
+    }).sort((a,b)=>b.score-a.score);
+  };
+
+  return <div>
+    <div className="hdr"><div><h2>Shift Swap Requests</h2><div className="hdr-sub">Smart matching with qualified replacements</div></div>
+      <button className="btn btn-p btn-sm" onClick={()=>{setForm({scheduleId:"",reason:"",notes:""});setShowNew(true);}}>+ New Swap Request</button>
+    </div>
+
+    <div className="sg">
+      <div className="sc wn"><span className="sl">Open Requests</span><span className="sv">{open.length}</span></div>
+      <div className="sc ok"><span className="sl">Filled</span><span className="sv">{completed.filter(s=>s.status==="filled").length}</span></div>
+      <div className="sc"><span className="sl">Cancelled</span><span className="sv">{completed.filter(s=>s.status==="cancelled").length}</span></div>
+    </div>
+
+    {open.length===0&&completed.length===0&&<div className="empty">No swap requests yet. Caregivers can request swaps when they need coverage.</div>}
+
+    {open.map(req=>{const sched=schedules.find(s=>s.id===req.scheduleId);const cg=caregivers.find(c=>c.id===sched?.caregiverId);const cl=clients.find(c=>c.id===sched?.clientId);const replacements=findReplacements(req);return <div key={req.id} className="card card-b" style={{marginBottom:14,borderLeft:"4px solid var(--warn)"}}>
+      <div className="card-h"><h3>{cg?.name} → needs swap for {cl?.name} on {fmtD(sched?.date)}</h3></div>
+      <div style={{padding:"12px 18px"}}>
+        <div style={{fontSize:12,color:"var(--t2)",marginBottom:8}}>
+          <strong>Shift:</strong> {sched?.startTime} - {sched?.endTime}<br/>
+          <strong>Reason:</strong> {req.reason}<br/>
+          {req.notes&&<><strong>Notes:</strong> {req.notes}</>}
+        </div>
+        <div style={{marginTop:12}}>
+          <div style={{fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:.5,marginBottom:8}}>🤖 AI-Suggested Replacements</div>
+          {replacements.slice(0,4).map(r=><div key={r.caregiver.id} style={{padding:"10px 12px",borderBottom:"var(--border-thin)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div>
+              <div style={{fontWeight:600,fontSize:13}}>{r.caregiver.name} <span style={{background:r.score>=75?"var(--ok)":r.score>=50?"var(--warn)":"var(--err)",color:"#fff",padding:"1px 6px",fontSize:10,marginLeft:6}}>{r.score}/100</span></div>
+              <div style={{fontSize:11,color:"var(--t2)"}}>{r.caregiver.certs?.join(", ")} {!r.available&&"⚠️ Has conflicting shift"}</div>
+            </div>
+            {r.available&&<button className="btn btn-sm btn-ok" onClick={()=>{
+              setSchedules(p=>p.map(s=>s.id===req.scheduleId?{...s,caregiverId:r.caregiver.id}:s));
+              setSwapRequests(p=>p.map(x=>x.id===req.id?{...x,status:"filled",replacedBy:r.caregiver.id,filledAt:now().toISOString()}:x));
+              if(notify)notify("U1","schedule_change","Shift Swap Filled",cg?.name+" → "+r.caregiver.name+" for "+cl?.name+" on "+fmtD(sched?.date),{});
+            }}>✓ Assign to {r.caregiver.name.split(" ")[0]}</button>}
+          </div>)}
+        </div>
+        <div style={{display:"flex",gap:6,marginTop:12}}>
+          <button className="btn btn-sm btn-s" onClick={()=>setSwapRequests(p=>p.map(x=>x.id===req.id?{...x,status:"cancelled"}:x))}>Cancel Request</button>
+        </div>
+      </div>
+    </div>;})}
+
+    {completed.length>0&&<details><summary style={{cursor:"pointer",fontSize:12,color:"var(--t2)",fontWeight:600,padding:"10px 0"}}>Completed ({completed.length})</summary>
+      {completed.map(req=>{const sched=schedules.find(s=>s.id===req.scheduleId);const cg=caregivers.find(c=>c.id===req.replacedBy);return <div key={req.id} style={{padding:"10px 16px",borderBottom:"var(--border-thin)",fontSize:12,opacity:.7}}>
+        <span className={`tag ${req.status==="filled"?"tag-ok":"tag-er"}`}>{req.status}</span> Schedule {sched?.id} {req.status==="filled"&&"→ "+cg?.name}
+      </div>;})}
+    </details>}
+
+    {showNew&&<div className="modal-bg" onClick={()=>setShowNew(false)}><div className="modal" onClick={e=>e.stopPropagation()}>
+      <div className="modal-h">New Swap Request<button className="btn btn-sm btn-s" onClick={()=>setShowNew(false)}>✕</button></div>
+      <div className="modal-b">
+        <div className="fi" style={{marginBottom:10}}><label>Schedule</label><select value={form.scheduleId} onChange={e=>setForm(p=>({...p,scheduleId:e.target.value}))}><option value="">Select shift</option>{schedules.filter(s=>s.status==="published"&&new Date(s.date)>=now()).map(s=>{const cg=caregivers.find(c=>c.id===s.caregiverId);const cl=clients.find(c=>c.id===s.clientId);return <option key={s.id} value={s.id}>{fmtD(s.date)} {s.startTime} — {cg?.name} for {cl?.name}</option>;})}</select></div>
+        <div className="fi" style={{marginBottom:10}}><label>Reason</label><select value={form.reason} onChange={e=>setForm(p=>({...p,reason:e.target.value}))}><option>Personal emergency</option><option>Sick</option><option>Family obligation</option><option>Schedule conflict</option><option>Other</option></select></div>
+        <div className="fi" style={{marginBottom:10}}><label>Notes</label><textarea value={form.notes} onChange={e=>setForm(p=>({...p,notes:e.target.value}))} rows={3} style={{width:"100%"}}/></div>
+        <button className="btn btn-p" style={{width:"100%"}} disabled={!form.scheduleId} onClick={()=>{setSwapRequests(p=>[{id:"SW"+uid(),...form,status:"open",createdAt:now().toISOString()},...p]);setShowNew(false);}}>Submit Request</button>
+      </div>
+    </div></div>}
+  </div>;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// AUDIT LOG VIEWER
+// ═══════════════════════════════════════════════════════════════════════
+function AuditLogPage({auditLog,clients,caregivers,allUsers}){
+  const [filter,setFilter]=useState("");
+  const [actionFilter,setActionFilter]=useState("all");
+  const filtered=auditLog.filter(a=>{
+    if(actionFilter!=="all"&&a.action!==actionFilter)return false;
+    if(filter&&!JSON.stringify(a).toLowerCase().includes(filter.toLowerCase()))return false;
+    return true;
+  });
+  const actions=[...new Set(auditLog.map(a=>a.action))];
+
+  return <div>
+    <div className="hdr"><div><h2>Audit Log</h2><div className="hdr-sub">{auditLog.length} actions logged · HIPAA-compliant trail</div></div></div>
+    <div className="card" style={{marginBottom:14,padding:"10px 16px",display:"flex",gap:10,alignItems:"center"}}>
+      <input placeholder="Search log..." value={filter} onChange={e=>setFilter(e.target.value)} style={{flex:1}}/>
+      <select value={actionFilter} onChange={e=>setActionFilter(e.target.value)}><option value="all">All actions</option>{actions.map(a=><option key={a}>{a}</option>)}</select>
+    </div>
+    <div className="card">
+      <div className="card-h"><h3>Activity Timeline ({filtered.length})</h3></div>
+      {filtered.length===0&&<div className="empty">No log entries match your filter</div>}
+      {filtered.slice(0,200).map(a=>{return <div key={a.id} style={{padding:"10px 16px",borderBottom:"var(--border-thin)",display:"flex",gap:14,fontSize:12}}>
+        <div style={{minWidth:140,fontSize:11,color:"var(--t2)"}}>{new Date(a.date).toLocaleDateString("en-US",{month:"short",day:"numeric"})} {new Date(a.date).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}</div>
+        <div style={{minWidth:120,fontWeight:600}}>{a.user}</div>
+        <div style={{minWidth:140}}><span className="tag tag-bl">{a.action}</span></div>
+        <div style={{flex:1,color:"var(--t2)"}}>{a.detail}</div>
+      </div>;})}
+    </div>
+  </div>;
+}
+
 function NotificationsPage({notifications,setNotifications,allUsers,clients,caregivers,incidents,setIncidents,expenses,setExpenses}){
   const [filter,setFilter]=useState("all");
   const filtered=filter==="all"?notifications:notifications.filter(n=>n.type===filter);
