@@ -2651,7 +2651,7 @@ export default function App(){
   const [campaigns,setCampaigns]=useState(seedCampaigns);
   const [reconEntries]=useState(seedReconEntries);
   const [schedules,setSchedules]=useState(seedSchedules);
-  const [assignments]=useState(seedAssignments);
+  const [assignments,setAssignments]=useState(seedAssignments);
   const [rateCards,setRateCards]=useState(seedRateCards);
   const [payCards,setPayCards]=useState(seedPayCards);
   const [billingPeriods,setBillingPeriods]=useState(seedBillingPeriods);
@@ -2856,7 +2856,7 @@ export default function App(){
       {pg==="events"&&<EventsPage events={events} setEvents={setEvents} clients={clients}/>}
       {pg==="portal"&&<ClientPortalPage clients={clients} caregivers={caregivers} notify={notify} assignments={assignments} sel={portalClient} setSel={setPortalClient} serviceRequests={serviceRequests} setServiceRequests={setServiceRequests} surveys={surveys} setSurveys={setSurveys} careGoals={careGoals} vitals={vitals} setVitals={setVitals} documents={documents} careNotes={careNotes} events={events} expenses={expenses} familyMsgs={familyMsgs} setFamilyMsgs={setFamilyMsgs} notifications={notifications} onReferCG={ap=>setCGApplicants(p=>[ap,...p])} onReferClient={ld=>setClientLeads(p=>[ld,...p])}/>}
       {pg==="family"&&<FamilyPage clients={clients} familyMsgs={familyMsgs} setFamilyMsgs={setFamilyMsgs} careNotes={careNotes} incidents={incidents} events={events}/>}
-      {pg==="team"&&<TeamPage caregivers={caregivers} setCaregivers={setCaregivers} progress={trainingProgress}/>}
+      {pg==="team"&&<TeamPage caregivers={caregivers} setCaregivers={setCaregivers} progress={trainingProgress} clients={clients} assignments={assignments} setAssignments={setAssignments}/>}
       {pg==="users"&&<UserManagementPage allUsers={allUsers} setAllUsers={setAllUsers}/>}
       {pg==="features"&&<FeatureManagementPage featureFlags={featureFlags} setFeatureFlags={setFeatureFlags} isFeatureEnabled={isFeatureEnabled} toggleFeature={toggleFeature} clients={clients} caregivers={caregivers} logAction={logAction}/>}
       {pg==="gps_map"&&<LiveGPSMapPage caregivers={caregivers} clients={clients} schedules={schedules} livePositions={livePositions}/>}
@@ -4604,11 +4604,32 @@ function FamilyPage({clients,familyMsgs,setFamilyMsgs,careNotes,incidents,events
 // ═══════════════════════════════════════════════════════════════════════
 // TEAM
 // ═══════════════════════════════════════════════════════════════════════
-function TeamPage({caregivers,setCaregivers,progress}){
+function TeamPage({caregivers,setCaregivers,progress,clients,assignments,setAssignments}){
+  const [manageCG,setManageCG] = useState(null);
+  const activeClients=(clients||[]).filter(c=>c.status!=="archived");
+  const getAssignedClients=(cgId)=>assignments.filter(a=>a.caregiverId===cgId&&a.status==="active").map(a=>a.clientId);
+  const toggleAssign=(cgId,clId)=>{
+    const exists=assignments.find(a=>a.caregiverId===cgId&&a.clientId===clId&&a.status==="active");
+    if(exists){
+      // Deactivate assignment
+      setAssignments(p=>p.map(a=>(a.caregiverId===cgId&&a.clientId===clId&&a.status==="active")?{...a,status:"inactive",endDate:new Date().toISOString().slice(0,10)}:a));
+    }else{
+      // Check if an inactive one exists, reactivate, else create new
+      const inactive=assignments.find(a=>a.caregiverId===cgId&&a.clientId===clId&&a.status!=="active");
+      if(inactive){
+        setAssignments(p=>p.map(a=>(a.caregiverId===cgId&&a.clientId===clId)?{...a,status:"active",startDate:new Date().toISOString().slice(0,10)}:a));
+      }else{
+        setAssignments(p=>[...p,{caregiverId:cgId,clientId:clId,status:"active",startDate:new Date().toISOString().slice(0,10)}]);
+      }
+    }
+  };
+
   return <div>
-    <div className="hdr"><div><h2>Team</h2><div className="hdr-sub">{caregivers.length} active caregivers</div></div></div>
-    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:14}}>
+    <div className="hdr"><div><h2>Team</h2><div className="hdr-sub">{caregivers.length} active caregivers · {assignments.filter(a=>a.status==="active").length} active assignments</div></div></div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(320px,1fr))",gap:14}}>
       {caregivers.map(cg=>{const done=(progress[cg.id]||[]).length;const pct=Math.round(done/TRAINING_MODULES.length*100);
+        const assignedIds=getAssignedClients(cg.id);
+        const assignedClientNames=assignedIds.map(id=>clients.find(c=>c.id===id)).filter(Boolean);
         return <div key={cg.id} className="card card-b">
           <div style={{display:"flex",gap:14,alignItems:"flex-start",marginBottom:14}}>
             <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6}}>
@@ -4618,7 +4639,20 @@ function TeamPage({caregivers,setCaregivers,progress}){
             <div style={{flex:1}}><div style={{fontFamily:"var(--fd)",fontSize:17,fontWeight:400}}>{cg.name}</div><div style={{fontSize:12,color:"var(--t2)"}}>{cg.email}</div><div style={{fontSize:12,color:"var(--t2)"}}>{cg.phone}</div></div>
             <span className="tag tag-ok">Active</span>
           </div>
-          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>{cg.certs.map(c=><span key={c} className="tag tag-bl">{c}</span>)}</div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>{(cg.certs||[]).map(c=><span key={c} className="tag tag-bl">{c}</span>)}</div>
+
+          {/* ASSIGNMENTS */}
+          <div style={{padding:"10px 12px",background:"var(--bg)",marginBottom:12}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+              <div style={{fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:.5,color:"var(--t2)"}}>👥 Assigned Clients ({assignedIds.length})</div>
+              <button className="btn btn-sm btn-p" style={{fontSize:10,padding:"3px 8px"}} onClick={()=>setManageCG(cg)}>Manage</button>
+            </div>
+            {assignedClientNames.length>0?
+              <div style={{display:"flex",flexWrap:"wrap",gap:4}}>{assignedClientNames.map(cl=><span key={cl.id} className="tag tag-ok" style={{fontSize:10}}>{cl.name}</span>)}</div>
+              :<div style={{fontSize:11,color:"var(--t2)",fontStyle:"italic"}}>No clients assigned</div>
+            }
+          </div>
+
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
             <span style={{fontSize:11,color:"var(--t2)"}}>Training: {done}/{TRAINING_MODULES.length}</span><span style={{fontSize:12,fontWeight:700}}>{pct}%</span>
           </div>
@@ -4629,6 +4663,33 @@ function TeamPage({caregivers,setCaregivers,progress}){
           </div>
         </div>;})}
     </div>
+
+    {/* ═══ MANAGE ASSIGNMENTS MODAL ═══ */}
+    {manageCG&&<div className="modal-bg" onClick={()=>setManageCG(null)}>
+      <div className="modal" style={{maxWidth:500,maxHeight:"90vh",overflow:"auto"}} onClick={e=>e.stopPropagation()}>
+        <div className="modal-h">👥 Manage Assignments — {manageCG.name}<button className="btn btn-sm btn-s" onClick={()=>setManageCG(null)}>✕</button></div>
+        <div className="modal-b">
+          <div className="ai-card"><h4>Client Assignments</h4><p>Check the clients this caregiver is assigned to. They'll show up in the caregiver's "My Clients" list, be schedulable, and appear in their portal.</p></div>
+          <div style={{marginBottom:10,fontSize:12,color:"var(--t2)"}}>
+            <strong>{getAssignedClients(manageCG.id).length}</strong> of <strong>{activeClients.length}</strong> clients assigned
+          </div>
+          {activeClients.length===0&&<div className="empty">No active clients to assign</div>}
+          {activeClients.map(cl=>{const isAssigned=getAssignedClients(manageCG.id).includes(cl.id);return <div key={cl.id} onClick={()=>toggleAssign(manageCG.id,cl.id)} style={{padding:"12px 14px",borderBottom:"var(--border-thin)",display:"flex",gap:12,alignItems:"center",cursor:"pointer",background:isAssigned?"#f0fff0":"transparent"}}>
+            <div style={{width:22,height:22,border:"2px solid "+(isAssigned?"var(--ok)":"#ccc"),display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,color:"var(--ok)",fontWeight:700,flexShrink:0}}>{isAssigned?"✓":""}</div>
+            <ProfileAvatar name={cl.name} photo={cl.photo} size={32}/>
+            <div style={{flex:1}}>
+              <div style={{fontWeight:600,fontSize:13}}>{cl.name}</div>
+              <div style={{fontSize:11,color:"var(--t2)"}}>{cl.age} years · {cl.dx?.slice(0,2).join(", ")||"No diagnoses listed"}</div>
+            </div>
+            {isAssigned&&<span className="tag tag-ok" style={{fontSize:10}}>Active</span>}
+          </div>;})}
+          <div style={{marginTop:14,padding:"10px 14px",background:"var(--bg)",fontSize:11,color:"var(--t2)"}}>
+            💡 Tip: Caregivers can be assigned to multiple clients. Schedules, care notes, and client portal access auto-update based on these assignments.
+          </div>
+          <button className="btn btn-p" style={{width:"100%",marginTop:14}} onClick={()=>setManageCG(null)}>Done</button>
+        </div>
+      </div>
+    </div>}
   </div>;
 }
 
