@@ -83,6 +83,126 @@ async function sbUploadReceipt(base64,expenseId){
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+// LIVE LOCATION SYNC (Supabase REST) — multi-device caregiver tracking
+// Table: caregiver_locations (see SETUP SQL in the app's GPS page)
+// ═══════════════════════════════════════════════════════════════════════
+// Post this device's location for a given caregiver during an active shift
+async function sbPostLocation(caregiverId,pos,status,shiftId){
+  try{
+    const body={
+      caregiver_id:caregiverId,
+      lat:pos.lat,lng:pos.lng,accuracy:pos.accuracy||null,
+      speed:pos.speed||0,heading:pos.heading||null,
+      status:status||"on_shift",shift_id:shiftId||null,
+      updated_at:new Date().toISOString()
+    };
+    // Upsert on caregiver_id (one current row per caregiver)
+    const resp=await fetch(SB_URL+"/rest/v1/caregiver_locations?on_conflict=caregiver_id",{
+      method:"POST",
+      headers:{...sbHeaders,"Content-Type":"application/json","Prefer":"resolution=merge-duplicates,return=minimal"},
+      body:JSON.stringify(body)
+    });
+    if(!resp.ok){const t=await resp.text();console.error("Location post error:",t);return false;}
+    return true;
+  }catch(e){console.error("Location post failed:",e);return false;}
+}
+// Fetch all caregivers' latest locations → {caregiverId:{lat,lng,...}}
+async function sbFetchLocations(){
+  try{
+    const resp=await fetch(SB_URL+"/rest/v1/caregiver_locations?select=*",{headers:sbHeaders});
+    if(!resp.ok)return null;
+    const rows=await resp.json();
+    const map={};
+    rows.forEach(r=>{
+      map[r.caregiver_id]={
+        lat:r.lat,lng:r.lng,accuracy:r.accuracy,speed:r.speed||0,
+        heading:r.heading,status:r.status,shiftId:r.shift_id,
+        timestamp:new Date(r.updated_at).getTime(),
+        address:r.status==="on_shift"?"On shift":r.status==="traveling"?"En route":"Off duty"
+      };
+    });
+    return map;
+  }catch(e){console.error("Location fetch failed:",e);return null;}
+}
+// Clear a caregiver's location when shift ends (set off_duty)
+async function sbClearLocation(caregiverId){
+  try{
+    await fetch(SB_URL+"/rest/v1/caregiver_locations?caregiver_id=eq."+encodeURIComponent(caregiverId),{
+      method:"PATCH",
+      headers:{...sbHeaders,"Content-Type":"application/json","Prefer":"return=minimal"},
+      body:JSON.stringify({status:"off_duty",updated_at:new Date().toISOString()})
+    });
+    return true;
+  }catch(e){console.error("Location clear failed:",e);return false;}
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// CLIENT PERSISTENCE (Supabase REST) — whole client record stored as JSONB
+// Table: clients_store (see SETUP SQL in Client Profiles page)
+//   id text primary key, data jsonb, updated_at timestamptz
+// ═══════════════════════════════════════════════════════════════════════
+// Load all persisted clients → array of client objects (or null if table missing/empty)
+async function sbLoadClients(){
+  try{
+    const resp=await fetch(SB_URL+"/rest/v1/clients_store?select=id,data&order=id",{headers:sbHeaders});
+    if(!resp.ok)return null; // table likely doesn't exist yet
+    const rows=await resp.json();
+    if(!Array.isArray(rows)||rows.length===0)return null;
+    return rows.map(r=>({...(r.data||{}),id:r.id}));
+  }catch(e){console.error("Client load failed:",e);return null;}
+}
+// Upsert a single client record
+async function sbSaveClient(client){
+  try{
+    const body={id:client.id,data:client,updated_at:new Date().toISOString()};
+    const resp=await fetch(SB_URL+"/rest/v1/clients_store?on_conflict=id",{
+      method:"POST",
+      headers:{...sbHeaders,"Content-Type":"application/json","Prefer":"resolution=merge-duplicates,return=minimal"},
+      body:JSON.stringify(body)
+    });
+    if(!resp.ok){const t=await resp.text();console.error("Client save error:",t);return false;}
+    return true;
+  }catch(e){console.error("Client save failed:",e);return false;}
+}
+// Bulk upsert (used for first-time seeding)
+async function sbSaveClientsBulk(clientsArr){
+  try{
+    const body=clientsArr.map(c=>({id:c.id,data:c,updated_at:new Date().toISOString()}));
+    const resp=await fetch(SB_URL+"/rest/v1/clients_store?on_conflict=id",{
+      method:"POST",
+      headers:{...sbHeaders,"Content-Type":"application/json","Prefer":"resolution=merge-duplicates,return=minimal"},
+      body:JSON.stringify(body)
+    });
+    return resp.ok;
+  }catch(e){console.error("Client bulk save failed:",e);return false;}
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// CAREGIVER PERSISTENCE (Supabase REST) — whole caregiver record as JSONB
+// Table: caregivers_store (id text primary key, data jsonb, updated_at)
+// ═══════════════════════════════════════════════════════════════════════
+async function sbLoadCaregivers(){
+  try{
+    const resp=await fetch(SB_URL+"/rest/v1/caregivers_store?select=id,data&order=id",{headers:sbHeaders});
+    if(!resp.ok)return null;
+    const rows=await resp.json();
+    if(!Array.isArray(rows)||rows.length===0)return null;
+    return rows.map(r=>({...(r.data||{}),id:r.id}));
+  }catch(e){console.error("Caregiver load failed:",e);return null;}
+}
+async function sbSaveCaregiversBulk(cgArr){
+  try{
+    const body=cgArr.map(c=>({id:c.id,data:c,updated_at:new Date().toISOString()}));
+    const resp=await fetch(SB_URL+"/rest/v1/caregivers_store?on_conflict=id",{
+      method:"POST",
+      headers:{...sbHeaders,"Content-Type":"application/json","Prefer":"resolution=merge-duplicates,return=minimal"},
+      body:JSON.stringify(body)
+    });
+    return resp.ok;
+  }catch(e){console.error("Caregiver bulk save failed:",e);return false;}
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 // STATUS DEFINITIONS — Every status used across the platform
 // ═══════════════════════════════════════════════════════════════════════
 const STATUS_DEFS={
@@ -844,6 +964,21 @@ const GPS_LOCATIONS={
 const simGPS=(base)=>{const j=()=>(Math.random()-.5)*.002;return{lat:base.lat+j(),lng:base.lng+j(),accuracy:5+Math.random()*12,ts:now()};};
 const gpsAddr=(lat,lng)=>{const closest=Object.values(GPS_LOCATIONS).reduce((best,loc)=>{const d=Math.abs(loc.lat-lat)+Math.abs(loc.lng-lng);return d<best.d?{d,loc}:best;},{d:Infinity,loc:null});return closest.d<0.01?closest.loc.addr:`${lat.toFixed(4)}°N, ${Math.abs(lng).toFixed(4)}°W`;};
 const gpsDist=(a,b)=>{const R=3959;const dLat=(b.lat-a.lat)*Math.PI/180;const dLon=(b.lng-a.lng)*Math.PI/180;const x=Math.sin(dLat/2)**2+Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*Math.sin(dLon/2)**2;return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));};
+// Capture this device's REAL location (Promise). Resolves {lat,lng,accuracy,ts}; rejects with a friendly message.
+const getRealGps=()=>new Promise((resolve,reject)=>{
+  if(typeof navigator==="undefined"||!("geolocation" in navigator)){reject(new Error("Geolocation not supported by this browser."));return;}
+  if(typeof window!=="undefined"&&window.isSecureContext===false){reject(new Error("Location requires HTTPS — open the deployed https:// site."));return;}
+  navigator.geolocation.getCurrentPosition(
+    (p)=>resolve({lat:p.coords.latitude,lng:p.coords.longitude,accuracy:Math.round(p.coords.accuracy||0),speed:p.coords.speed?Math.round(p.coords.speed*2.237):0,ts:now()}),
+    (err)=>{
+      if(err.code===1)reject(new Error("Location permission denied. Enable it in browser settings and reload."));
+      else if(err.code===2)reject(new Error("Position unavailable. Check device location services."));
+      else if(err.code===3)reject(new Error("Location request timed out. Try again."));
+      else reject(new Error(err.message||"Unknown geolocation error."));
+    },
+    {enableHighAccuracy:true,maximumAge:0,timeout:15000}
+  );
+});
 const today=()=>now().toISOString().split("T")[0];
 
 // ─── SEED: CLIENTS ──────────────────────────────────────────────────
@@ -854,6 +989,7 @@ const CLIENTS=[
    social:{interests:["Bridge club","Classical music","Gardening","Reading mystery novels"],faith:"Episcopal",pets:"Cat named Whiskers",birthday:"1947-08-14"},
    preferences:{wakeTime:"7:30 AM",bedTime:"9:00 PM",tea:"Earl Grey with honey",diet:"Low sodium",tvShows:["Jeopardy","PBS NewsHour"]},
    familyPortal:{enabled:true,contacts:[{name:"Tom Sutton",relation:"Son",email:"tom.sutton@email.com",access:["daily_notes","medications","schedule"]},{name:"Sarah Sutton",relation:"Daughter-in-law",email:"sarah.s@email.com",access:["daily_notes","schedule"]}]},
+   geo:{lat:41.9026,lng:-87.6280,radius:150},
    status:"active",riskLevel:"low",billRate:50,photo:null},
   {id:"CL2",name:"Linda Frank",age:84,addr:"3930 N Pine Grove Ave, Chicago IL 60613",phone:"773-555-0201",emergency:"Mike Frank (nephew) 773-555-0202",
    dx:["CHF (NYHA Class II)","Type 2 Diabetes","Chronic back pain","Depression"],meds:["Metformin 500mg","Furosemide 20mg","Sertraline 50mg","Carvedilol 12.5mg","Gabapentin 300mg"],
@@ -861,6 +997,7 @@ const CLIENTS=[
    social:{interests:["Watching old movies","Phone calls with friends","Crossword puzzles","Dog care"],faith:"Catholic",pets:"Dog named Buddy",birthday:"1941-11-22"},
    preferences:{wakeTime:"8:00 AM",bedTime:"10:00 PM",tea:"Chamomile",diet:"Diabetic, cardiac",tvShows:["TCM classics","The Price is Right"]},
    familyPortal:{enabled:true,contacts:[{name:"Mike Frank",relation:"Nephew",email:"mike.frank@email.com",access:["daily_notes","medications","incidents","schedule","health_vitals"]}]},
+   geo:{lat:41.9521,lng:-87.6451,radius:150},
    status:"active",riskLevel:"medium",billRate:35,photo:null},
   {id:"CL3",name:"Steven Brown",age:72,addr:"4920 N Marine Dr, Chicago IL 60640",phone:"773-555-0301",emergency:"Janet Brown (wife) 773-555-0302",
    dx:["Parkinson's disease (Stage 2)","Mild depression","Benign prostatic hyperplasia"],meds:["Carbidopa-Levodopa 25/100","Tamsulosin 0.4mg","Escitalopram 10mg"],
@@ -868,8 +1005,20 @@ const CLIENTS=[
    social:{interests:["Jazz music","Chess","Watching Cubs games","Reading history books"],faith:"Baptist",pets:"None",birthday:"1953-05-30"},
    preferences:{wakeTime:"7:00 AM",bedTime:"9:30 PM",tea:"Black coffee, 1 sugar",diet:"Regular",tvShows:["Cubs games","60 Minutes","History Channel"]},
    familyPortal:{enabled:true,contacts:[{name:"Janet Brown",relation:"Wife",email:"janet.brown@email.com",access:["daily_notes","medications","incidents","schedule","health_vitals","expenses"]}]},
+   geo:{lat:41.9714,lng:-87.6536,radius:150},
    status:"active",riskLevel:"medium",billRate:35,photo:null},
 ];
+
+// ─── SINGLE SOURCE OF TRUTH for client home GPS ─────────────────────
+// Reads geo from the client record. Falls back to a default radius.
+// Other modules (EVV geofence, caregiver clock-in, live map) all use this.
+function clientGeo(clientOrId,clients){
+  const c=typeof clientOrId==="string"?(clients||[]).find(x=>x.id===clientOrId):clientOrId;
+  if(c&&c.geo&&typeof c.geo.lat==="number"&&typeof c.geo.lng==="number"){
+    return {lat:c.geo.lat,lng:c.geo.lng,radius:c.geo.radius||150,addr:c.addr,name:c.name};
+  }
+  return null; // no coordinates set yet
+}
 
 // ─── SEED: CAREGIVERS ───────────────────────────────────────────────
 const CAREGIVERS=[
@@ -1912,6 +2061,8 @@ function CaregiverPortal({user,clients,caregivers,careNotes,setCareNotes,inciden
   const [lateMinutes,setLateMinutes]=useState(15);
   const [lateHistory,setLateHistory]=useState([]);
   const [incidentRec,setIncidentRec]=useState(null);
+  const [gpsBusy,setGpsBusy]=useState(false);
+  const [gpsErr,setGpsErr]=useState("");
   const gpsRef=useRef(null);
   const cg=caregivers.find(c=>c.id===user.caregiverId);
 
@@ -1927,39 +2078,49 @@ function CaregiverPortal({user,clients,caregivers,careNotes,setCareNotes,inciden
   // Clock tick
   useEffect(()=>{const t=setInterval(()=>setClockTime(now()),1000);return()=>clearInterval(t);},[]);
 
-  // GPS tracking during shift
+  // Real GPS tracking during shift (updates trail with this device's actual position)
   useEffect(()=>{
     if(shift){
       gpsRef.current=setInterval(()=>{
-        const loc=GPS_LOCATIONS[shift.clientId];
-        if(loc){const pos=simGPS(loc);setGpsTrail(p=>[...p,pos]);}
-      },4000);
+        getRealGps().then(pos=>setGpsTrail(p=>[...p,pos])).catch(()=>{/* keep last known on transient errors */});
+      },20000); // poll every 20s during shift
       return()=>clearInterval(gpsRef.current);
     } else { if(gpsRef.current)clearInterval(gpsRef.current); }
   },[shift]);
 
-  const clockIn=(clientId)=>{
-    const loc=GPS_LOCATIONS[clientId];
-    if(!loc)return;
-    const gps=simGPS(loc);
-    const addr=gpsAddr(gps.lat,gps.lng);
-    const inFence=Math.abs(gps.lat-loc.lat)+Math.abs(gps.lng-loc.lng)<0.005;
-    setShift({id:"SH"+uid(),clientId,clientName:loc.name,clockInTime:now(),clockInGPS:gps,clockInAddr:addr,inFence,breaks:[],onBreak:false});
+  const clockIn=async(clientId)=>{
+    const cl=clients.find(c=>c.id===clientId);
+    const geo=clientGeo(clientId,clients);
+    const loc=GPS_LOCATIONS[clientId]; // legacy label fallback
+    setGpsErr("");setGpsBusy(true);
+    let gps,err=null;
+    try{gps=await getRealGps();}
+    catch(e){err=e.message;gps=null;}
+    setGpsBusy(false);
+    if(err){setGpsErr(err);return;} // don't clock in without a real fix
+    const addr=cl?.addr||loc?.addr||gpsAddr(gps.lat,gps.lng);
+    // Geofence against the client's saved home GPS (single source of truth)
+    let inFence=true;
+    if(geo){const d=gpsDist(gps,geo);inFence=d<=(geo.radius/1609.34);} // radius is meters → miles
+    setShift({id:"SH"+uid(),clientId,clientName:cl?.name||loc?.name||"Client",clockInTime:now(),clockInGPS:gps,clockInAddr:addr,inFence,geoMissing:!geo,breaks:[],onBreak:false});
     setGpsTrail([gps]);
     // Notify client, owner, admin
     if(notify){
-      const cl=clients.find(c=>c.id===clientId);
-      const msg=`${user.name} has clocked in for ${cl?.name||"client"} at ${addr}`;
+      const msg=`${user.name} has clocked in for ${cl?.name||"client"} at ${addr}${!geo?" (no geofence set)":inFence?"":" (⚠️ outside geofence)"}`;
       notify(clientId,"clock_in","Caregiver Arrived",msg,{caregiverId:user.caregiverId});
       notify("U1","clock_in","Clock In",msg,{caregiverId:user.caregiverId,clientId});
       notify("U2","clock_in","Clock In",msg,{caregiverId:user.caregiverId,clientId});
     }
   };
 
-  const clockOut=()=>{
+  const clockOut=async()=>{
     if(!shift)return;
-    const loc=GPS_LOCATIONS[shift.clientId];
-    const gps=loc?simGPS(loc):{lat:0,lng:0};
+    setGpsErr("");setGpsBusy(true);
+    let gps,err=null;
+    try{gps=await getRealGps();}
+    catch(e){err=e.message;gps=null;}
+    setGpsBusy(false);
+    if(err){setGpsErr(err);return;}
     const dur=Math.round((now()-shift.clockInTime)/60000);
     const breakMins=shift.breaks.reduce((s,b)=>s+(b.end?(b.end-b.start)/60000:0),0);
     const completed={...shift,clockOutTime:now(),clockOutGPS:gps,clockOutAddr:gpsAddr(gps.lat,gps.lng),duration:dur,workMins:dur-Math.round(breakMins),breakMins:Math.round(breakMins),gpsPoints:gpsTrail.length};
@@ -2199,8 +2360,9 @@ function CaregiverPortal({user,clients,caregivers,careNotes,setCareNotes,inciden
           <div className="gps-trail">{gpsTrail.slice(-80).map((_,i)=> <div key={i} className="dot" style={{opacity:.3+((i/80)*.7),background:clockAccent}}/>)}</div>
           <div className="clock-btn-row">
             <button className={`clock-btn ${shift.onBreak?"clock-btn-in":"clock-btn-break"}`} onClick={toggleBreak}>{shift.onBreak?"▶ Resume":"⏸ Break"}</button>
-            <button className="clock-btn clock-btn-out" onClick={clockOut}>⏹ Clock Out</button>
+            <button className="clock-btn clock-btn-out" disabled={gpsBusy} onClick={clockOut}>{gpsBusy?"📍 Locating…":"⏹ Clock Out"}</button>
           </div>
+          {gpsErr&&<div style={{marginTop:10,padding:"8px 12px",background:"rgba(220,38,38,.15)",border:"1px solid #dc2626",fontSize:11,color:"#fca5a5"}}>📍 {gpsErr}</div>}
         </div>
 
         {/* Quick Actions During Shift */}
@@ -2214,18 +2376,21 @@ function CaregiverPortal({user,clients,caregivers,careNotes,setCareNotes,inciden
 
       : <div>
         {/* Clock In Selector */}
-        <div style={{fontFamily:"var(--fd)",fontSize:18,marginBottom:16}}>Clock In</div>
+        <div style={{fontFamily:"var(--fd)",fontSize:18,marginBottom:8}}>Clock In</div>
+        <div style={{padding:"8px 12px",background:"#f0f9ff",border:"1px solid #7dd3fc",fontSize:11,color:"#0c4a6e",marginBottom:12}}>📍 Clocking in captures your device's real GPS to verify you're at the client's home. Allow the location prompt when asked. Requires HTTPS + location permission.</div>
+        {gpsErr&&<div style={{padding:"8px 12px",background:"#fee2e2",border:"1px solid #dc2626",fontSize:11,color:"#7f1d1d",marginBottom:12}}>📍 {gpsErr}</div>}
         <div style={{display:"grid",gridTemplateColumns:"1fr",gap:10}}>
-          {myClients.map(cl=>{const loc=GPS_LOCATIONS[cl.id];const hasLateAlert=lateAlert&&lateAlert.clientId===cl.id;return <div key={cl.id} className="card" style={{overflow:"hidden"}}>
+          {myClients.map(cl=>{const geo=clientGeo(cl.id,clients);const hasLateAlert=lateAlert&&lateAlert.clientId===cl.id;return <div key={cl.id} className="card" style={{overflow:"hidden"}}>
             {hasLateAlert&& <div style={{background:"rgba(138,115,86,.1)",padding:"8px 14px",display:"flex",alignItems:"center",gap:6,fontSize:11,color:"#8a7356",fontWeight:600,borderBottom:"var(--border-thin)"}}>⏰ Late alert sent — ETA {lateAlert.etaMinutes} min ({lateAlert.reason})</div>}
             <div className="card-b" style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
               <div>
                 <div style={{fontFamily:"var(--fd)",fontSize:16,fontWeight:400}}>{cl.name}</div>
-                <div style={{fontSize:12,color:"var(--t2)",marginTop:2}}>📍 {loc?.addr||cl.addr}</div>
+                <div style={{fontSize:12,color:"var(--t2)",marginTop:2}}>📍 {cl.addr}</div>
+                <div style={{fontSize:10,marginTop:3}}>{geo?<span style={{color:"var(--ok)"}}>✓ Geofence set ({geo.radius}m)</span>:<span style={{color:"var(--warn)"}}>⚠️ No home GPS set — clock-in won't verify location</span>}</div>
               </div>
               <div style={{display:"flex",gap:6}}>
                 <button className="btn btn-sm btn-s" style={{color:"#8a7356",borderColor:"rgba(138,115,86,.3)"}} onClick={(e)=>{e.stopPropagation();setShowLateForm(cl.id);setLateMinutes(calcETA(cl.id).eta);}}>⏰ Late</button>
-                <button className="btn btn-p" onClick={()=>clockIn(cl.id)}>Clock In →</button>
+                <button className="btn btn-p" disabled={gpsBusy} onClick={()=>clockIn(cl.id)}>{gpsBusy?"📍 Locating…":"Clock In →"}</button>
               </div>
             </div>
           </div>;})}
@@ -3006,6 +3171,75 @@ export default function App(){
   ]);
   const [incidentPrompts,setIncidentPrompts]=useState(DEFAULT_INCIDENT_PROMPTS);
 
+  // ═══ CLIENT PERSISTENCE (auto-save to Supabase) ═══
+  const [clientSync,setClientSync]=useState("idle"); // idle|loading|saving|saved|error|offline
+  const clientsLoadedRef=useRef(false); // becomes true after first load completes
+  const clientSaveTimer=useRef(null);
+  // 1) Load persisted clients on startup (fall back to seed data)
+  useEffect(()=>{
+    let active=true;
+    (async()=>{
+      setClientSync("loading");
+      const loaded=await sbLoadClients();
+      if(!active)return;
+      if(loaded&&loaded.length>0){
+        setClients(loaded);
+        setClientSync("saved");
+      }else if(loaded===null){
+        // Table missing or unreachable — stay on seed data, mark offline
+        setClientSync("offline");
+      }else{
+        setClientSync("saved");
+      }
+      // Allow auto-save only after the initial load has settled
+      setTimeout(()=>{clientsLoadedRef.current=true;},300);
+    })();
+    return()=>{active=false;};
+  },[]);
+  // 2) Auto-save whenever clients change (debounced), after initial load
+  useEffect(()=>{
+    if(!clientsLoadedRef.current)return; // don't save during/just after load
+    if(clientSync==="offline")return; // table not set up — skip silently
+    if(clientSaveTimer.current)clearTimeout(clientSaveTimer.current);
+    setClientSync("saving");
+    clientSaveTimer.current=setTimeout(async()=>{
+      const ok=await sbSaveClientsBulk(clients);
+      setClientSync(ok?"saved":"error");
+    },800);
+    return()=>{if(clientSaveTimer.current)clearTimeout(clientSaveTimer.current);};
+  // eslint-disable-next-line
+  },[clients]);
+
+  // ═══ CAREGIVER PERSISTENCE (auto-save to Supabase) ═══
+  const [cgSync,setCgSync]=useState("idle"); // idle|loading|saving|saved|error|offline
+  const cgLoadedRef=useRef(false);
+  const cgSaveTimer=useRef(null);
+  useEffect(()=>{
+    let active=true;
+    (async()=>{
+      setCgSync("loading");
+      const loaded=await sbLoadCaregivers();
+      if(!active)return;
+      if(loaded&&loaded.length>0){setCaregivers(loaded);setCgSync("saved");}
+      else if(loaded===null){setCgSync("offline");}
+      else{setCgSync("saved");}
+      setTimeout(()=>{cgLoadedRef.current=true;},300);
+    })();
+    return()=>{active=false;};
+  },[]);
+  useEffect(()=>{
+    if(!cgLoadedRef.current)return;
+    if(cgSync==="offline")return;
+    if(cgSaveTimer.current)clearTimeout(cgSaveTimer.current);
+    setCgSync("saving");
+    cgSaveTimer.current=setTimeout(async()=>{
+      const ok=await sbSaveCaregiversBulk(caregivers);
+      setCgSync(ok?"saved":"error");
+    },800);
+    return()=>{if(cgSaveTimer.current)clearTimeout(cgSaveTimer.current);};
+  // eslint-disable-next-line
+  },[caregivers]);
+
   // Load photos from Supabase Storage on startup
   useEffect(()=>{
     const loadPhotos=async()=>{
@@ -3148,7 +3382,7 @@ export default function App(){
     <div className="main">
       {pg==="dash"&&<DashPage clients={clients} caregivers={caregivers} incidents={incidents} expenses={expenses} careNotes={careNotes} events={events} setEvents={setEvents} trainingProgress={trainingProgress} schedules={schedules} setSchedules={setSchedules} setPg={setPg} notify={notify}/>}
       {pg==="schedule"&&<SchedulePage schedules={schedules} setSchedules={setSchedules} clients={clients} caregivers={caregivers}/>}
-      {pg==="clients"&&<ClientsPage clients={clients} setClients={setClients} sel={selClient} setSel={setSelClient} caregivers={caregivers} careNotes={careNotes} incidents={incidents} events={events} setEvents={setEvents} chores={chores} expenses={expenses} schedules={schedules} notify={notify}/>}
+      {pg==="clients"&&<ClientsPage clients={clients} setClients={setClients} sel={selClient} setSel={setSelClient} caregivers={caregivers} careNotes={careNotes} incidents={incidents} events={events} setEvents={setEvents} chores={chores} expenses={expenses} schedules={schedules} notify={notify} clientSync={clientSync}/>}
       {pg==="care"&&<CarePage clients={clients} caregivers={caregivers} chores={chores} setChores={setChores} incidents={incidents} setIncidents={setIncidents} careNotes={careNotes} setCareNotes={setCareNotes} modal={modal} setModal={setModal}/>}
       {pg==="expenses"&&<ExpensesPage expenses={expenses} setExpenses={setExpenses} caregivers={caregivers} clients={clients}/>}
       {pg==="recon"&&<ReconPage entries={reconEntries} caregivers={caregivers} clients={clients}/>}
@@ -3162,10 +3396,10 @@ export default function App(){
       {pg==="events"&&<EventsPage events={events} setEvents={setEvents} clients={clients}/>}
       {pg==="portal"&&<ClientPortalPage clients={clients} caregivers={caregivers} notify={notify} assignments={assignments} sel={portalClient} setSel={setPortalClient} serviceRequests={serviceRequests} setServiceRequests={setServiceRequests} surveys={surveys} setSurveys={setSurveys} careGoals={careGoals} vitals={vitals} setVitals={setVitals} documents={documents} careNotes={careNotes} events={events} expenses={expenses} familyMsgs={familyMsgs} setFamilyMsgs={setFamilyMsgs} notifications={notifications} onReferCG={ap=>setCGApplicants(p=>[ap,...p])} onReferClient={ld=>setClientLeads(p=>[ld,...p])}/>}
       {pg==="family"&&<FamilyPage clients={clients} familyMsgs={familyMsgs} setFamilyMsgs={setFamilyMsgs} careNotes={careNotes} incidents={incidents} events={events} moments={moments} setMoments={setMoments} caregivers={caregivers}/>}
-      {pg==="team"&&<TeamPage caregivers={caregivers} setCaregivers={setCaregivers} progress={trainingProgress} clients={clients} assignments={assignments} setAssignments={setAssignments}/>}
+      {pg==="team"&&<TeamPage caregivers={caregivers} setCaregivers={setCaregivers} progress={trainingProgress} clients={clients} assignments={assignments} setAssignments={setAssignments} cgSync={cgSync}/>}
       {pg==="users"&&<UserManagementPage allUsers={allUsers} setAllUsers={setAllUsers}/>}
       {pg==="features"&&<FeatureManagementPage featureFlags={featureFlags} setFeatureFlags={setFeatureFlags} isFeatureEnabled={isFeatureEnabled} toggleFeature={toggleFeature} clients={clients} caregivers={caregivers} logAction={logAction}/>}
-      {pg==="gps_map"&&<LiveGPSMapPage caregivers={caregivers} clients={clients} schedules={schedules} livePositions={livePositions}/>}
+      {pg==="gps_map"&&<LiveGPSMapPage caregivers={caregivers} clients={clients} schedules={schedules} livePositions={livePositions} setLivePositions={setLivePositions} currentUser={user}/>}
       {pg==="shift_swap"&&<ShiftSwapPage swapRequests={swapRequests} setSwapRequests={setSwapRequests} caregivers={caregivers} clients={clients} schedules={schedules} setSchedules={setSchedules} notify={notify}/>}
       {pg==="supplies"&&<SupplyPage supplies={supplies} setSupplies={setSupplies} clients={clients}/>}
       {pg==="evv"&&<VisitVerificationPage visits={visits} setVisits={setVisits} schedules={schedules} caregivers={caregivers} clients={clients} notify={notify}/>}
@@ -3732,9 +3966,10 @@ function DashPage({clients,caregivers,incidents,expenses,careNotes,events,setEve
 // ═══════════════════════════════════════════════════════════════════════
 // CLIENT PROFILES
 // ═══════════════════════════════════════════════════════════════════════
-function ClientsPage({clients,setClients,sel,setSel,caregivers,careNotes,incidents,events,setEvents,chores,expenses,schedules,notify}){
+function ClientsPage({clients,setClients,sel,setSel,caregivers,careNotes,incidents,events,setEvents,chores,expenses,schedules,notify,clientSync}){
   const cl=clients.find(c=>c.id===sel)||clients.filter(c=>c.status!=="archived")[0]||clients[0];
   const [tab,setTab]=useState("overview");
+  const [showCloudSetup,setShowCloudSetup]=useState(false);
   const [editField,setEditField]=useState(null);
   const [addInput,setAddInput]=useState("");
   const [editADL,setEditADL]=useState(null);
@@ -3806,6 +4041,10 @@ function ClientsPage({clients,setClients,sel,setSel,caregivers,careNotes,inciden
   return <div>
     <div className="hdr"><div><h2>Client Profiles</h2><div className="hdr-sub">Comprehensive health, social, and care data</div></div>
       <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+        {/* Cloud sync status */}
+        {(()=>{const map={loading:{t:"⏳ Loading…",c:"#6b7280"},saving:{t:"⏳ Saving…",c:"#0369a1"},saved:{t:"☁️ Saved",c:"#16a34a"},error:{t:"⚠️ Save failed",c:"#dc2626"},offline:{t:"⚙️ Set up cloud save",c:"#d97706"},idle:{t:"",c:""}};const s=map[clientSync]||map.idle;if(!s.t)return null;
+          return <button onClick={()=>setShowCloudSetup(true)} title="Client data auto-saves to your Supabase database" style={{fontSize:10,fontWeight:600,color:s.c,background:"none",border:"1px solid "+s.c+"55",padding:"4px 8px",cursor:"pointer",borderRadius:3}}>{s.t}</button>;
+        })()}
         <label style={{fontSize:10,display:"flex",alignItems:"center",gap:4,cursor:"pointer"}}><input type="checkbox" checked={showArchived} onChange={e=>setShowArchived(e.target.checked)}/> Show archived ({archivedCount})</label>
         <select value={sel} onChange={e=>setSel(e.target.value)} style={{padding:"8px 12px",border:"var(--border-thin)",fontFamily:"var(--f)",fontWeight:600}}>
           {activeClients.map(c=> <option key={c.id} value={c.id}>{c.name}{c.status==="archived"?" (archived)":""}</option>)}
@@ -3813,6 +4052,44 @@ function ClientsPage({clients,setClients,sel,setSel,caregivers,careNotes,inciden
         <button className="btn btn-p btn-sm" onClick={()=>{setForm(emptyClient);setDxInput("");setMedInput("");setShowAdd(true);}}>+ Add Client</button>
       </div>
     </div>
+
+    {/* ═══ CLOUD SAVE SETUP MODAL ═══ */}
+    {showCloudSetup&&<div className="modal-bg" onClick={()=>setShowCloudSetup(false)}>
+      <div className="modal" style={{maxWidth:640,maxHeight:"92vh",overflow:"auto"}} onClick={e=>e.stopPropagation()}>
+        <div className="modal-h">☁️ Client Cloud Save — Setup<button className="btn btn-sm btn-s" onClick={()=>setShowCloudSetup(false)}>✕</button></div>
+        <div className="modal-b">
+          <div className="ai-card" style={{marginBottom:14}}>
+            <h4>Status: {clientSync==="saved"?"✅ Connected & saving":clientSync==="offline"?"⚙️ Not set up yet":clientSync==="error"?"⚠️ Save failing":"⏳ Working…"}</h4>
+            <p>Client records (including home GPS coordinates) auto-save to your Supabase database whenever you add, edit, or archive a client. If the table below doesn't exist yet, the app keeps working on in-memory data and your edits reset on reload — run the SQL once to enable permanent saving.</p>
+          </div>
+          <div style={{fontSize:13,fontWeight:700,marginBottom:6}}>Run this once in Supabase → SQL Editor</div>
+          <pre style={{background:"#070707",color:"#7dd3fc",padding:"14px",fontSize:11,lineHeight:1.6,overflow:"auto",borderRadius:4,whiteSpace:"pre-wrap"}}>{`create table if not exists clients_store (
+  id text primary key,
+  data jsonb not null,
+  updated_at timestamptz default now()
+);
+
+alter table clients_store enable row level security;
+
+-- Demo policies: allow the anon key to read & write.
+-- (Tighten to authenticated staff before production.)
+create policy "anon read clients" on clients_store
+  for select using (true);
+create policy "anon insert clients" on clients_store
+  for insert with check (true);
+create policy "anon update clients" on clients_store
+  for update using (true);`}</pre>
+          <button className="btn btn-sm btn-s" style={{marginTop:8,marginBottom:14}} onClick={()=>{navigator.clipboard?.writeText(`create table if not exists clients_store (\n  id text primary key,\n  data jsonb not null,\n  updated_at timestamptz default now()\n);\nalter table clients_store enable row level security;\ncreate policy "anon read clients" on clients_store for select using (true);\ncreate policy "anon insert clients" on clients_store for insert with check (true);\ncreate policy "anon update clients" on clients_store for update using (true);`);alert("SQL copied to clipboard!");}}>📋 Copy SQL</button>
+          <div style={{padding:"10px 14px",background:"#fffbeb",border:"1px solid #fcd34d",fontSize:11,color:"#78350f",lineHeight:1.6,marginBottom:14}}>
+            <strong>⚠️ Notes:</strong> The demo policies let the public anon key read/write all client records — fine for testing, but before real client data goes in, require staff authentication and restrict access. Whole client records are stored as JSONB. I can't run this SQL for you — you'll run it yourself in your Supabase dashboard.
+          </div>
+          <div style={{display:"flex",gap:6}}>
+            <a className="btn btn-p" href="https://supabase.com/dashboard/project/okvyhbypncctevvtwqkf/sql/new" target="_blank" rel="noopener noreferrer" style={{flex:1,justifyContent:"center",textDecoration:"none"}}>Open Supabase SQL Editor →</a>
+            <button className="btn btn-s" onClick={()=>setShowCloudSetup(false)}>Close</button>
+          </div>
+        </div>
+      </div>
+    </div>}
 
     {/* Client Header */}
     <div className="card card-b" style={{display:"flex",gap:20,alignItems:"center",flexWrap:"wrap"}}>
@@ -4488,6 +4765,35 @@ function ClientsPage({clients,setClients,sel,setSel,caregivers,careNotes,inciden
         <div className="fg" style={{marginBottom:12}}>
           <div className="fi"><label>Address</label><input value={form.addr||form.address||""} onChange={e=>setForm(p=>({...p,addr:e.target.value}))} placeholder="e.g. 123 Main St, Chicago IL 60601"/></div>
           <div className="fi"><label>Phone</label><input value={form.phone||""} onChange={e=>setForm(p=>({...p,phone:e.target.value}))} placeholder="e.g. 312-555-0100"/></div>
+        </div>
+
+        {/* ═══ HOME GPS / GEOFENCE (for EVV clock-in verification) ═══ */}
+        <div style={{marginBottom:12,padding:"12px 14px",background:"#f0f9ff",border:"1px solid #7dd3fc"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+            <div style={{fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:.5,color:"#0369a1"}}>📍 Home GPS — Geofence for Clock-In Verification</div>
+            {form.geo?.lat?<span className="tag tag-ok">✓ Set</span>:<span className="tag tag-wn">Not set</span>}
+          </div>
+          <div className="fg" style={{marginBottom:8}}>
+            <div className="fi"><label>Latitude</label><input type="number" step="0.0001" value={form.geo?.lat??""} onChange={e=>setForm(p=>({...p,geo:{...(p.geo||{}),lat:e.target.value===""?undefined:parseFloat(e.target.value),radius:p.geo?.radius||150}}))} placeholder="41.9026"/></div>
+            <div className="fi"><label>Longitude</label><input type="number" step="0.0001" value={form.geo?.lng??""} onChange={e=>setForm(p=>({...p,geo:{...(p.geo||{}),lng:e.target.value===""?undefined:parseFloat(e.target.value),radius:p.geo?.radius||150}}))} placeholder="-87.6280"/></div>
+            <div className="fi"><label>Radius (m)</label><input type="number" value={form.geo?.radius??150} onChange={e=>setForm(p=>({...p,geo:{...(p.geo||{}),radius:parseInt(e.target.value)||150}}))} placeholder="150"/></div>
+          </div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+            <button type="button" className="btn btn-sm btn-s" onClick={()=>{
+              if(!("geolocation" in navigator)){alert("Geolocation not supported by this browser.");return;}
+              if(typeof window!=="undefined"&&window.isSecureContext===false){alert("Location requires HTTPS — open the deployed https:// site.");return;}
+              navigator.geolocation.getCurrentPosition(
+                (pos)=>{setForm(p=>({...p,geo:{lat:parseFloat(pos.coords.latitude.toFixed(6)),lng:parseFloat(pos.coords.longitude.toFixed(6)),radius:p.geo?.radius||150}}));},
+                (err)=>{alert("Couldn't get location: "+(err.code===1?"permission denied":err.code===2?"position unavailable":"timed out"));},
+                {enableHighAccuracy:true,maximumAge:0,timeout:15000}
+              );
+            }}>📲 Use My Current Location</button>
+            {form.addr&&<a className="btn btn-sm btn-s" href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(form.addr)}`} target="_blank" rel="noopener noreferrer" style={{textDecoration:"none"}}>🔎 Look up address on Google Maps</a>}
+            {form.geo?.lat&&<button type="button" className="btn btn-sm btn-s" style={{color:"var(--err)"}} onClick={()=>setForm(p=>({...p,geo:undefined}))}>Clear</button>}
+          </div>
+          <div style={{fontSize:10,color:"#0369a1",marginTop:8,lineHeight:1.5,opacity:.85}}>
+            💡 Stand at the client's home and tap "Use My Current Location," or find the address on Google Maps, right-click the exact spot → copy the coordinates → paste above. The radius (default 150m) is how close a caregiver must be to count as "on-site" at clock-in.
+          </div>
         </div>
         <div className="fg" style={{marginBottom:12}}>
           <div className="fi"><label>Emergency Contact</label><input value={form.emergency||""} onChange={e=>setForm(p=>({...p,emergency:e.target.value}))} placeholder="e.g. Jane Smith (daughter) 312-555-0101"/></div>
@@ -5851,8 +6157,9 @@ function FamilyPage({clients,familyMsgs,setFamilyMsgs,careNotes,incidents,events
 // ═══════════════════════════════════════════════════════════════════════
 // TEAM
 // ═══════════════════════════════════════════════════════════════════════
-function TeamPage({caregivers,setCaregivers,progress,clients,assignments,setAssignments}){
+function TeamPage({caregivers,setCaregivers,progress,clients,assignments,setAssignments,cgSync}){
   const [manageCG,setManageCG] = useState(null);
+  const [showCloudSetup,setShowCloudSetup]=useState(false);
   const activeClients=(clients||[]).filter(c=>c.status!=="archived");
   const getAssignedClients=(cgId)=>assignments.filter(a=>a.caregiverId===cgId&&a.status==="active").map(a=>a.clientId);
   const toggleAssign=(cgId,clId)=>{
@@ -5872,7 +6179,49 @@ function TeamPage({caregivers,setCaregivers,progress,clients,assignments,setAssi
   };
 
   return <div>
-    <div className="hdr"><div><h2>Team</h2><div className="hdr-sub">{caregivers.length} active caregivers · {assignments.filter(a=>a.status==="active").length} active assignments</div></div></div>
+    <div className="hdr"><div><h2>Team</h2><div className="hdr-sub">{caregivers.length} active caregivers · {assignments.filter(a=>a.status==="active").length} active assignments</div></div>
+      <div style={{display:"flex",gap:6,alignItems:"center"}}>
+        {(()=>{const map={loading:{t:"⏳ Loading…",c:"#6b7280"},saving:{t:"⏳ Saving…",c:"#0369a1"},saved:{t:"☁️ Saved",c:"#16a34a"},error:{t:"⚠️ Save failed",c:"#dc2626"},offline:{t:"⚙️ Set up cloud save",c:"#d97706"},idle:{t:"",c:""}};const s=map[cgSync]||map.idle;if(!s.t)return null;
+          return <button onClick={()=>setShowCloudSetup(true)} title="Caregiver data auto-saves to your Supabase database" style={{fontSize:10,fontWeight:600,color:s.c,background:"none",border:"1px solid "+s.c+"55",padding:"4px 8px",cursor:"pointer",borderRadius:3}}>{s.t}</button>;
+        })()}
+      </div>
+    </div>
+
+    {/* ═══ CLOUD SAVE SETUP MODAL (caregivers) ═══ */}
+    {showCloudSetup&&<div className="modal-bg" onClick={()=>setShowCloudSetup(false)}>
+      <div className="modal" style={{maxWidth:640,maxHeight:"92vh",overflow:"auto"}} onClick={e=>e.stopPropagation()}>
+        <div className="modal-h">☁️ Caregiver Cloud Save — Setup<button className="btn btn-sm btn-s" onClick={()=>setShowCloudSetup(false)}>✕</button></div>
+        <div className="modal-b">
+          <div className="ai-card" style={{marginBottom:14}}>
+            <h4>Status: {cgSync==="saved"?"✅ Connected & saving":cgSync==="offline"?"⚙️ Not set up yet":cgSync==="error"?"⚠️ Save failing":"⏳ Working…"}</h4>
+            <p>Caregiver records auto-save to your Supabase database whenever you add, edit, or update a caregiver. Run the SQL below once to enable permanent saving; until then the app works on in-memory data and resets on reload.</p>
+          </div>
+          <div style={{fontSize:13,fontWeight:700,marginBottom:6}}>Run this once in Supabase → SQL Editor</div>
+          <pre style={{background:"#070707",color:"#7dd3fc",padding:"14px",fontSize:11,lineHeight:1.6,overflow:"auto",borderRadius:4,whiteSpace:"pre-wrap"}}>{`create table if not exists caregivers_store (
+  id text primary key,
+  data jsonb not null,
+  updated_at timestamptz default now()
+);
+
+alter table caregivers_store enable row level security;
+
+create policy "anon read caregivers" on caregivers_store
+  for select using (true);
+create policy "anon insert caregivers" on caregivers_store
+  for insert with check (true);
+create policy "anon update caregivers" on caregivers_store
+  for update using (true);`}</pre>
+          <button className="btn btn-sm btn-s" style={{marginTop:8,marginBottom:14}} onClick={()=>{navigator.clipboard?.writeText(`create table if not exists caregivers_store (\n  id text primary key,\n  data jsonb not null,\n  updated_at timestamptz default now()\n);\nalter table caregivers_store enable row level security;\ncreate policy "anon read caregivers" on caregivers_store for select using (true);\ncreate policy "anon insert caregivers" on caregivers_store for insert with check (true);\ncreate policy "anon update caregivers" on caregivers_store for update using (true);`);alert("SQL copied to clipboard!");}}>📋 Copy SQL</button>
+          <div style={{padding:"10px 14px",background:"#fffbeb",border:"1px solid #fcd34d",fontSize:11,color:"#78350f",lineHeight:1.6,marginBottom:14}}>
+            <strong>⚠️ Notes:</strong> Demo policies let the anon key read/write all caregiver records. Tighten to authenticated staff before production. I can't run this SQL for you — run it in your Supabase dashboard.
+          </div>
+          <div style={{display:"flex",gap:6}}>
+            <a className="btn btn-p" href="https://supabase.com/dashboard/project/okvyhbypncctevvtwqkf/sql/new" target="_blank" rel="noopener noreferrer" style={{flex:1,justifyContent:"center",textDecoration:"none"}}>Open Supabase SQL Editor →</a>
+            <button className="btn btn-s" onClick={()=>setShowCloudSetup(false)}>Close</button>
+          </div>
+        </div>
+      </div>
+    </div>}
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(320px,1fr))",gap:14}}>
       {caregivers.map(cg=>{const done=(progress[cg.id]||[]).length;const pct=Math.round(done/TRAINING_MODULES.length*100);
         const assignedIds=getAssignedClients(cg.id);
@@ -6749,42 +7098,60 @@ function VisitVerificationPage({visits,setVisits,schedules,caregivers,clients,no
   const inProgressCount=todayVisits.filter(v=>v.status==="in_progress").length;
   const flaggedCount=todayVisits.filter(v=>v.status==="flagged"||v.geofenceIn===false).length;
 
-  // Simulate capturing GPS (in production: navigator.geolocation.getCurrentPosition)
-  const captureGps=(clientId)=>{
-    const geo=CLIENT_GEO[clientId];
-    if(!geo)return{lat:41.5731,lng:-87.7846,accuracy:12};
-    // Simulate caregiver near client home (small random offset)
-    const jitter=()=>(Math.random()-0.5)*0.0008; // ~40m
-    return{lat:geo.lat+jitter(),lng:geo.lng+jitter(),accuracy:Math.round(8+Math.random()*15)};
-  };
+  // ═══ REAL DEVICE GPS — captures actual location for geofence verification ═══
+  const captureGps=()=>new Promise((resolve,reject)=>{
+    if(!("geolocation" in navigator)){reject(new Error("Geolocation not supported by this browser."));return;}
+    if(typeof window!=="undefined"&&window.isSecureContext===false){reject(new Error("Location requires HTTPS — open the deployed https:// site."));return;}
+    navigator.geolocation.getCurrentPosition(
+      (p)=>resolve({lat:p.coords.latitude,lng:p.coords.longitude,accuracy:Math.round(p.coords.accuracy||0)}),
+      (err)=>{
+        if(err.code===1)reject(new Error("Location permission denied. Enable it in browser settings and reload."));
+        else if(err.code===2)reject(new Error("Position unavailable. Check device location services."));
+        else if(err.code===3)reject(new Error("Location request timed out. Try again."));
+        else reject(new Error(err.message||"Unknown geolocation error."));
+      },
+      {enableHighAccuracy:true,maximumAge:0,timeout:15000}
+    );
+  });
 
-  const doClockIn=(sched)=>{
-    const gps=captureGps(sched.clientId);
-    const geo=CLIENT_GEO[sched.clientId];
-    const dist=geo?distM(gps,geo):null;
-    const inFence=dist!=null?dist<=geo.radius:true;
+  const doClockIn=async(sched)=>{
+    setGpsStatus("locating");
+    let gps,gpsErr=null;
+    try{gps=await captureGps();}
+    catch(e){gpsErr=e.message;gps=null;}
+    const geo=clientGeo(sched.clientId,clients);
+    const dist=(gps&&geo)?distM(gps,geo):null;
+    const inFence=dist!=null?dist<=geo.radius:null; // null = couldn't verify
     const nowT=new Date().toLocaleTimeString("en-US",{hour12:false,hour:"2-digit",minute:"2-digit"});
+    let status,notes;
+    if(gpsErr){status="flagged";notes=`⚠️ GPS unavailable at clock-in: ${gpsErr}`;}
+    else if(!geo){status="flagged";notes=`⚠️ No home GPS set for this client — set it on the Client Profile to enable geofence verification. Captured location recorded.`;}
+    else if(inFence){status="in_progress";notes="";}
+    else{status="flagged";notes=`⚠️ GPS ${dist}m from client home (geofence ${geo?.radius}m) — verify location.`;}
     const newVisit={
       id:"VIS"+uid(),scheduleId:sched.id,caregiverId:sched.caregiverId,clientId:sched.clientId,date:today_,
       clockIn:nowT,clockOut:null,clockInGps:gps,clockOutGps:null,
       clockInSelfie:selfieData,clockOutSelfie:null,
       geofenceIn:inFence,geofenceOut:null,tasksVerified:[],
-      status:inFence?"in_progress":"flagged",
-      notes:inFence?"":`⚠️ GPS ${dist}m from client home (geofence ${geo?.radius}m) — verify location.`
+      status,notes
     };
     setVisits(p=>[newVisit,...p]);
-    if(!inFence&&notify)notify("U1","alert","EVV Geofence Alert",`${caregivers.find(c=>c.id===sched.caregiverId)?.name} clocked in ${dist}m from ${clients.find(c=>c.id===sched.clientId)?.name}'s home`,{});
-    setClockModal(null);setSelfieData(null);
+    if((inFence===false||gpsErr)&&notify)notify("U1","alert","EVV Geofence Alert",`${caregivers.find(c=>c.id===sched.caregiverId)?.name} clock-in ${gpsErr?"GPS failed":dist+"m from "+clients.find(c=>c.id===sched.clientId)?.name+"'s home"}`,{});
+    setGpsStatus(null);setClockModal(null);setSelfieData(null);
   };
 
-  const doClockOut=(visit,sched)=>{
-    const gps=captureGps(visit.clientId);
-    const geo=CLIENT_GEO[visit.clientId];
-    const dist=geo?distM(gps,geo):null;
-    const inFence=dist!=null?dist<=geo.radius:true;
+  const doClockOut=async(visit,sched)=>{
+    setGpsStatus("locating");
+    let gps,gpsErr=null;
+    try{gps=await captureGps();}
+    catch(e){gpsErr=e.message;gps=null;}
+    const geo=clientGeo(visit.clientId,clients);
+    const dist=(gps&&geo)?distM(gps,geo):null;
+    const inFence=dist!=null?dist<=geo.radius:null;
     const nowT=new Date().toLocaleTimeString("en-US",{hour12:false,hour:"2-digit",minute:"2-digit"});
-    setVisits(p=>p.map(v=>v.id===visit.id?{...v,clockOut:nowT,clockOutGps:gps,clockOutSelfie:selfieData,geofenceOut:inFence,tasksVerified:sched?.tasks||[],status:inFence&&v.geofenceIn?"verified":"flagged"}:v));
-    setClockModal(null);setSelfieData(null);
+    const verified=inFence===true&&visit.geofenceIn===true;
+    setVisits(p=>p.map(v=>v.id===visit.id?{...v,clockOut:nowT,clockOutGps:gps,clockOutSelfie:selfieData,geofenceOut:inFence,tasksVerified:sched?.tasks||[],status:verified?"verified":"flagged",notes:gpsErr?(v.notes?v.notes+" ":"")+`⚠️ GPS unavailable at clock-out: ${gpsErr}`:v.notes}:v));
+    setGpsStatus(null);setClockModal(null);setSelfieData(null);
   };
 
   return <div>
@@ -6849,7 +7216,7 @@ function VisitVerificationPage({visits,setVisits,schedules,caregivers,clients,no
     </div>
 
     {/* Clock In/Out Modal */}
-    {clockModal&&(()=>{const sched=clockModal.schedule;const cg=caregivers.find(c=>c.id===sched.caregiverId);const cl=clients.find(c=>c.id===sched.clientId);const geo=CLIENT_GEO[sched.clientId];
+    {clockModal&&(()=>{const sched=clockModal.schedule;const cg=caregivers.find(c=>c.id===sched.caregiverId);const cl=clients.find(c=>c.id===sched.clientId);const geo=clientGeo(sched.clientId,clients);
       return <div className="modal-bg" onClick={()=>{setClockModal(null);setSelfieData(null);}}>
       <div className="modal" style={{maxWidth:480}} onClick={e=>e.stopPropagation()}>
         <div className="modal-h">{clockModal.mode==="in"?"🟢 Clock In":"🔴 Clock Out"} — {cg?.name}<button className="btn btn-sm btn-s" onClick={()=>{setClockModal(null);setSelfieData(null);}}>✕</button></div>
@@ -6877,17 +7244,17 @@ function VisitVerificationPage({visits,setVisits,schedules,caregivers,clients,no
             <div style={{color:"#0c4a6e"}}>On clock-{clockModal.mode}, your device GPS will be captured and compared to {cl?.name}'s home location ({geo?.radius||50}m geofence). Location outside the geofence will be flagged for review.</div>
           </div>
 
-          <button className="btn btn-p" style={{width:"100%"}} onClick={()=>{
+          <button className="btn btn-p" style={{width:"100%"}} disabled={gpsStatus==="locating"} onClick={()=>{
             if(clockModal.mode==="in")doClockIn(sched);
             else doClockOut(clockModal.visit,sched);
-          }}>{clockModal.mode==="in"?"🟢 Confirm Clock In":"🔴 Confirm Clock Out"}</button>
-          <div style={{fontSize:10,color:"var(--t2)",marginTop:8,textAlign:"center"}}>In production, GPS captured via device geolocation. Selfie verified against caregiver profile photo.</div>
+          }}>{gpsStatus==="locating"?"📍 Getting your location…":clockModal.mode==="in"?"🟢 Confirm Clock In":"🔴 Confirm Clock Out"}</button>
+          <div style={{fontSize:10,color:"var(--t2)",marginTop:8,textAlign:"center"}}>Your device's real GPS is captured on confirm (allow the browser prompt). Requires HTTPS + location permission. Selfie verified against caregiver profile photo.</div>
         </div>
       </div>
     </div>;})()}
 
     {/* Visit detail modal */}
-    {sel&&(()=>{const cg=caregivers.find(c=>c.id===sel.caregiverId);const cl=clients.find(c=>c.id===sel.clientId);const geo=CLIENT_GEO[sel.clientId];
+    {sel&&(()=>{const cg=caregivers.find(c=>c.id===sel.caregiverId);const cl=clients.find(c=>c.id===sel.clientId);const geo=clientGeo(sel.clientId,clients);
       const inDist=sel.clockInGps&&geo?distM(sel.clockInGps,geo):null;
       const outDist=sel.clockOutGps&&geo?distM(sel.clockOutGps,geo):null;
       return <div className="modal-bg" onClick={()=>setSel(null)}>
@@ -7776,7 +8143,7 @@ function FeatureManagementPage({featureFlags,setFeatureFlags,isFeatureEnabled,to
 // ═══════════════════════════════════════════════════════════════════════
 // LIVE GPS MAP — Real-time caregiver locations
 // ═══════════════════════════════════════════════════════════════════════
-function LiveGPSMapPage({caregivers,clients,schedules,livePositions}){
+function LiveGPSMapPage({caregivers,clients,schedules,livePositions,setLivePositions,currentUser}){
   const today_=today();
   const todayShifts=(schedules||[]).filter(s=>s.date===today_&&s.status==="published");
   const [selCG,setSelCG]=useState(null);
@@ -7792,24 +8159,37 @@ function LiveGPSMapPage({caregivers,clients,schedules,livePositions}){
   // ═══ Workforce Intelligence Agent ═══
   const [wfAgentLoading,setWfAgentLoading]=useState(false);
   const [wfAgentInsights,setWfAgentInsights]=useState(null);
+  // ═══ LIVE DEVICE GPS (#1) ═══
+  const [myPos,setMyPos]=useState(null); // this device's real location
+  const [gpsState,setGpsState]=useState("idle"); // idle|requesting|tracking|denied|unavailable|insecure
+  const [gpsError,setGpsError]=useState("");
+  const watchIdRef=useRef(null);
+  const myMarkerRef=useRef(null);
+  const myCircleRef=useRef(null);
+  // ═══ MULTI-DEVICE SYNC (#2) ═══
+  // Which caregiver "this device" is acting as (in production: derived from logged-in user)
+  const [trackingAs,setTrackingAs]=useState(currentUser?.caregiverId||caregivers[0]?.id||"");
+  const [syncOn,setSyncOn]=useState(false); // posting my location to Supabase
+  const [sbPositions,setSbPositions]=useState({}); // positions read back from Supabase
+  const [sbStatus,setSbStatus]=useState("off"); // off|syncing|error
+  const [showSetupSql,setShowSetupSql]=useState(false);
   const mapRef=useRef(null);
   const leafletMap=useRef(null);
   const markersRef=useRef([]);
 
-  // Mock live positions if none set (Chicago area)
+  // Mock live positions if none set (Chicago area) — used as demo fallback
   const mockPositions={
     CG1:{lat:41.9034,lng:-87.6276,accuracy:8,timestamp:Date.now()-120000,address:"Near 30 E Elm St, Chicago",speed:0,status:"on_shift"},
     CG2:{lat:41.9421,lng:-87.6516,accuracy:12,timestamp:Date.now()-340000,address:"Near 3930 N Pine Grove Ave",speed:0,status:"on_shift"},
     CG3:{lat:41.9742,lng:-87.6502,accuracy:15,timestamp:Date.now()-90000,address:"En route to Steven Brown's",speed:25,status:"traveling"},
     CG4:{lat:41.5731,lng:-87.7846,accuracy:20,timestamp:Date.now()-1200000,address:"Tinley Park area",speed:0,status:"off_duty"},
   };
-  // Mock client locations near CWIN office in Tinley Park (for demo)
-  const mockClientLocations={
-    CL1:{lat:41.5731,lng:-87.7846,address:"Tinley Park, IL"},
-    CL2:{lat:41.5950,lng:-87.7320,address:"Oak Forest, IL"},
-    CL3:{lat:41.5700,lng:-87.8060,address:"Tinley Park, IL"},
-  };
-  const positions={...mockPositions,...livePositions};
+  // Client home locations — derived from each client's saved geo (single source of truth)
+  const mockClientLocations={};
+  (clients||[]).forEach(c=>{const g=clientGeo(c,clients);if(g)mockClientLocations[c.id]={lat:g.lat,lng:g.lng,address:c.addr||c.name,radius:g.radius};});
+  // Layer order: mock demo data < parent livePositions < Supabase live < my own device
+  const positions={...mockPositions,...livePositions,...sbPositions};
+  if(myPos&&trackingAs)positions[trackingAs]={lat:myPos.lat,lng:myPos.lng,accuracy:myPos.accuracy,speed:myPos.speed||0,heading:myPos.heading,timestamp:myPos.timestamp,status:syncOn?"on_shift":"off_duty",address:"📍 This device"};
 
   // ═══ WORKFORCE INTELLIGENCE — Late-Risk Predictor ═══
   // Score each caregiver's likelihood of being late to today's shifts based on:
@@ -8132,6 +8512,88 @@ Be direct, actionable, and specific. The dispatcher needs to know exactly who to
   // eslint-disable-next-line
   },[selCG]);
 
+  // ═══ #1: REAL DEVICE GPS via navigator.geolocation ═══
+  const startTracking=()=>{
+    setGpsError("");
+    if(!("geolocation" in navigator)){setGpsState("unavailable");setGpsError("This browser doesn't support geolocation.");return;}
+    // Geolocation requires a secure context (HTTPS or localhost)
+    if(typeof window!=="undefined"&&window.isSecureContext===false){setGpsState("insecure");setGpsError("Location needs HTTPS. Open the deployed (https://) site, not a raw IP or file.");return;}
+    setGpsState("requesting");
+    if(watchIdRef.current!=null)navigator.geolocation.clearWatch(watchIdRef.current);
+    watchIdRef.current=navigator.geolocation.watchPosition(
+      (p)=>{
+        const np={lat:p.coords.latitude,lng:p.coords.longitude,accuracy:Math.round(p.coords.accuracy||0),speed:p.coords.speed?Math.round(p.coords.speed*2.237):0,heading:p.coords.heading||null,timestamp:Date.now()};
+        setMyPos(np);setGpsState("tracking");
+        // First fix: center the map there
+        if(leafletMap.current&&!myMarkerRef.current){leafletMap.current.flyTo([np.lat,np.lng],14,{duration:1});}
+      },
+      (err)=>{
+        if(err.code===1){setGpsState("denied");setGpsError("Location permission denied. Enable it in your browser's site settings and reload.");}
+        else if(err.code===2){setGpsState("unavailable");setGpsError("Position unavailable. Check that device location services are on.");}
+        else if(err.code===3){setGpsError("Location request timed out — retrying…");}
+        else{setGpsError(err.message||"Unknown geolocation error.");}
+      },
+      {enableHighAccuracy:true,maximumAge:5000,timeout:15000}
+    );
+  };
+  const stopTracking=()=>{
+    if(watchIdRef.current!=null){navigator.geolocation.clearWatch(watchIdRef.current);watchIdRef.current=null;}
+    setGpsState("idle");
+  };
+  // Cleanup on unmount
+  useEffect(()=>()=>{if(watchIdRef.current!=null)navigator.geolocation.clearWatch(watchIdRef.current);},[]);
+
+  // Render/update "you are here" marker when myPos changes
+  useEffect(()=>{
+    if(!leafletMap.current||!window.L||!myPos)return;
+    const L=window.L;
+    const ll=[myPos.lat,myPos.lng];
+    if(!myMarkerRef.current){
+      const icon=L.divIcon({html:`<div style="width:18px;height:18px;border-radius:50%;background:#2563eb;border:3px solid #fff;box-shadow:0 0 0 4px rgba(37,99,235,.3),0 2px 6px rgba(0,0,0,.4);"></div>`,className:"",iconSize:[18,18],iconAnchor:[9,9]});
+      myMarkerRef.current=L.marker(ll,{icon,zIndexOffset:1000}).addTo(leafletMap.current).bindPopup("📍 You are here");
+      myCircleRef.current=L.circle(ll,{radius:myPos.accuracy||30,color:"#2563eb",fillColor:"#2563eb",fillOpacity:0.1,weight:1}).addTo(leafletMap.current);
+    }else{
+      myMarkerRef.current.setLatLng(ll);
+      if(myCircleRef.current){myCircleRef.current.setLatLng(ll);myCircleRef.current.setRadius(myPos.accuracy||30);}
+    }
+  },[myPos]);
+
+  // ═══ #2: MULTI-DEVICE SYNC via Supabase ═══
+  // Post my location to Supabase whenever it updates and sync is ON
+  useEffect(()=>{
+    if(!syncOn||!myPos||!trackingAs)return;
+    let cancelled=false;
+    (async()=>{
+      const ok=await sbPostLocation(trackingAs,myPos,"on_shift",null);
+      if(!cancelled)setSbStatus(ok?"syncing":"error");
+    })();
+    return()=>{cancelled=true;};
+  },[myPos,syncOn,trackingAs]);
+
+  // Poll everyone's locations from Supabase every 15s while sync is ON
+  useEffect(()=>{
+    if(!syncOn)return;
+    let active=true;
+    const poll=async()=>{
+      const map=await sbFetchLocations();
+      if(active&&map)setSbPositions(map);
+    };
+    poll();
+    const intv=setInterval(poll,15000);
+    return()=>{active=false;clearInterval(intv);};
+  },[syncOn]);
+
+  // When turning sync off, mark my row off_duty
+  const toggleSync=async()=>{
+    if(syncOn){
+      setSyncOn(false);setSbStatus("off");
+      if(trackingAs)await sbClearLocation(trackingAs);
+    }else{
+      if(gpsState!=="tracking"){startTracking();}
+      setSyncOn(true);setSbStatus("syncing");
+    }
+  };
+
   const wxCodeToText=(code)=>{
     const m={0:"Clear",1:"Mostly clear",2:"Partly cloudy",3:"Overcast",45:"Fog",48:"Foggy",51:"Light drizzle",53:"Drizzle",55:"Heavy drizzle",61:"Light rain",63:"Rain",65:"Heavy rain",71:"Light snow",73:"Snow",75:"Heavy snow",77:"Snow grains",80:"Rain showers",81:"Heavy showers",82:"Violent showers",85:"Snow showers",86:"Heavy snow showers",95:"Thunderstorm",96:"Thunderstorm w/ hail",99:"Severe thunderstorm"};
     return m[code]||"—";
@@ -8154,6 +8616,49 @@ Be direct, actionable, and specific. The dispatcher needs to know exactly who to
     <div className="hdr"><div><h2>Live GPS Map</h2><div className="hdr-sub">Real-time caregiver locations · Tinley Park metro area · Updated {new Date().toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}</div></div>
       <div style={{display:"flex",gap:6}}>
         <button className="btn btn-sm btn-s" onClick={()=>{if(leafletMap.current)leafletMap.current.setView([41.7,-87.7],10);setSelCG(null);}}>🎯 Reset View</button>
+      </div>
+    </div>
+
+    {/* ═══ LIVE GPS CONTROL PANEL ═══ */}
+    <div className="card" style={{marginBottom:14,background:"linear-gradient(135deg,#0c4a6e,#075985)",color:"#fff"}}>
+      <div style={{padding:"14px 18px"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:14}}>
+          <div style={{flex:1,minWidth:260}}>
+            <div style={{fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:1,opacity:.7,marginBottom:6}}>📍 This Device's Location</div>
+            {gpsState==="tracking"&&myPos?<div>
+              <div style={{fontSize:15,fontWeight:600}}>🟢 Live — tracking your real location</div>
+              <div style={{fontSize:12,opacity:.85,marginTop:2}}>{myPos.lat.toFixed(5)}, {myPos.lng.toFixed(5)} · ±{myPos.accuracy}m{myPos.speed?` · ${myPos.speed} mph`:""}</div>
+            </div>:gpsState==="requesting"?<div style={{fontSize:14}}>⏳ Requesting location… (allow the browser prompt)</div>
+            :gpsState==="denied"?<div style={{fontSize:14,color:"#fca5a5"}}>🚫 {gpsError}</div>
+            :gpsState==="insecure"?<div style={{fontSize:14,color:"#fca5a5"}}>🔒 {gpsError}</div>
+            :gpsState==="unavailable"?<div style={{fontSize:14,color:"#fca5a5"}}>⚠️ {gpsError}</div>
+            :<div style={{fontSize:13,opacity:.85}}>Your location is not being tracked. Click "Use My Location" to show where you actually are on the map.</div>}
+            {gpsError&&gpsState==="tracking"&&<div style={{fontSize:11,color:"#fcd34d",marginTop:4}}>{gpsError}</div>}
+          </div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+            {gpsState!=="tracking"?<button className="btn btn-sm" style={{background:"#fff",color:"#075985",fontWeight:700}} onClick={startTracking}>📍 Use My Location</button>
+            :<button className="btn btn-sm btn-s" style={{borderColor:"#fff",color:"#fff"}} onClick={stopTracking}>⏹ Stop Tracking</button>}
+          </div>
+        </div>
+
+        {/* Multi-device sync row */}
+        <div style={{marginTop:14,paddingTop:14,borderTop:"1px solid rgba(255,255,255,.15)",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}}>
+          <div style={{flex:1,minWidth:260}}>
+            <div style={{fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:1,opacity:.7,marginBottom:4}}>🔄 Multi-Device Sync (EVV)</div>
+            <div style={{fontSize:12,opacity:.85}}>
+              {sbStatus==="syncing"?`🟢 Broadcasting your location as a caregiver. Other devices see you within 15s.`
+              :sbStatus==="error"?`🔴 Sync error — the caregiver_locations table may not exist yet. See setup below.`
+              :`Share your location with the team during a shift. Each caregiver runs the app on their phone; everyone sees each other live.`}
+            </div>
+          </div>
+          <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+            <select value={trackingAs} onChange={e=>setTrackingAs(e.target.value)} style={{fontSize:12,padding:"6px 8px"}} title="Which caregiver is this device?">
+              {caregivers.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            <button className="btn btn-sm" style={{background:syncOn?"#dc2626":"#10b981",color:"#fff",fontWeight:700}} onClick={toggleSync}>{syncOn?"⏹ Stop Sharing":"📡 Share Location"}</button>
+            <button className="btn btn-sm btn-s" style={{borderColor:"#fff",color:"#fff"}} onClick={()=>setShowSetupSql(true)}>⚙️ Setup</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -8701,8 +9206,65 @@ Be specific with names, times, and addresses. Do not invent data — only use wh
     })()}
 
     <div style={{marginTop:14,padding:"12px 16px",background:"var(--bg)",fontSize:11,color:"var(--t2)"}}>
-      <strong>Map data:</strong> OpenTopoMap (topographic), OpenStreetMap (street), Esri (satellite). <strong>Weather:</strong> Open-Meteo. <strong>Traffic:</strong> Visual representation of major Chicago-area arteries (Production version requires Google/HERE/Waze API). <strong>GPS:</strong> Real-time updates require caregivers to enable location sharing during shifts.
+      <strong>Map data:</strong> OpenTopoMap (topographic), OpenStreetMap (street), Esri (satellite). <strong>Weather:</strong> Open-Meteo. <strong>Traffic:</strong> Visual representation of major Chicago-area arteries (Production version requires Google/HERE/Waze API). <strong>GPS:</strong> "Use My Location" reads this device's real position. "Share Location" syncs it to all devices via Supabase — each caregiver runs the app on their own phone.
     </div>
+
+    {/* ═══ MULTI-DEVICE SYNC SETUP MODAL ═══ */}
+    {showSetupSql&&<div className="modal-bg" onClick={()=>setShowSetupSql(false)}>
+      <div className="modal" style={{maxWidth:680,maxHeight:"92vh",overflow:"auto"}} onClick={e=>e.stopPropagation()}>
+        <div className="modal-h">⚙️ Multi-Device Location Sync — One-Time Setup<button className="btn btn-sm btn-s" onClick={()=>setShowSetupSql(false)}>✕</button></div>
+        <div className="modal-b">
+          <div className="ai-card" style={{marginBottom:14}}>
+            <h4>How multi-device tracking works</h4>
+            <p>Each caregiver opens this app on their own phone and taps <strong>"Share Location"</strong>. Their device posts its GPS to a Supabase table every few seconds <em>during their shift</em>. Every other device polls that table, so the office and other caregivers see everyone live. A web app can only read its <em>own</em> device's GPS — that's why each caregiver must run the app and opt in.</p>
+          </div>
+
+          <div style={{fontSize:13,fontWeight:700,marginBottom:6}}>Step 1 — Create the table (run once in Supabase)</div>
+          <p style={{fontSize:12,color:"var(--t2)",marginBottom:8}}>Open your Supabase dashboard → <strong>SQL Editor</strong> → New query → paste this and click <strong>Run</strong>:</p>
+          <pre style={{background:"#070707",color:"#7dd3fc",padding:"14px",fontSize:11,lineHeight:1.6,overflow:"auto",borderRadius:4,whiteSpace:"pre-wrap"}}>{`create table if not exists caregiver_locations (
+  caregiver_id text primary key,
+  lat double precision not null,
+  lng double precision not null,
+  accuracy double precision,
+  speed double precision default 0,
+  heading double precision,
+  status text default 'on_shift',
+  shift_id text,
+  updated_at timestamptz default now()
+);
+
+-- Enable Row Level Security
+alter table caregiver_locations enable row level security;
+
+-- Demo policy: allow the anon key to read & write.
+-- (Tighten to authenticated caregivers before production.)
+create policy "anon read locations" on caregiver_locations
+  for select using (true);
+create policy "anon upsert locations" on caregiver_locations
+  for insert with check (true);
+create policy "anon update locations" on caregiver_locations
+  for update using (true);`}</pre>
+          <button className="btn btn-sm btn-s" style={{marginTop:8,marginBottom:16}} onClick={()=>{navigator.clipboard?.writeText(`create table if not exists caregiver_locations (\n  caregiver_id text primary key,\n  lat double precision not null,\n  lng double precision not null,\n  accuracy double precision,\n  speed double precision default 0,\n  heading double precision,\n  status text default 'on_shift',\n  shift_id text,\n  updated_at timestamptz default now()\n);\nalter table caregiver_locations enable row level security;\ncreate policy "anon read locations" on caregiver_locations for select using (true);\ncreate policy "anon upsert locations" on caregiver_locations for insert with check (true);\ncreate policy "anon update locations" on caregiver_locations for update using (true);`);alert("SQL copied to clipboard!");}}>📋 Copy SQL</button>
+
+          <div style={{fontSize:13,fontWeight:700,marginBottom:6}}>Step 2 — On each caregiver's phone</div>
+          <ol style={{fontSize:12,color:"var(--t2)",lineHeight:1.7,paddingLeft:18,marginBottom:16}}>
+            <li>Open the deployed app (the <strong>https://</strong> Vercel URL — GPS won't work on http or a raw IP)</li>
+            <li>Go to Live GPS Map → pick their name in the dropdown</li>
+            <li>Tap <strong>📡 Share Location</strong> and allow the browser's location prompt</li>
+            <li>Their dot now appears on everyone's map, updating every ~15 seconds</li>
+          </ol>
+
+          <div style={{padding:"10px 14px",background:"#fffbeb",border:"1px solid #fcd34d",fontSize:11,color:"#78350f",lineHeight:1.6}}>
+            <strong>⚠️ Privacy & production notes:</strong> The demo RLS policies above let the public anon key read/write all locations — fine for testing, but before real use you should require caregiver authentication and restrict each caregiver to writing only their own row. Also: only track <em>during shifts</em> (this app stops posting when "Share Location" is off), and disclose tracking to caregivers in writing. I can't modify your database for you — you'll run the SQL above yourself.
+          </div>
+
+          <div style={{marginTop:14,display:"flex",gap:6}}>
+            <a className="btn btn-p" href="https://supabase.com/dashboard/project/okvyhbypncctevvtwqkf/sql/new" target="_blank" rel="noopener noreferrer" style={{flex:1,justifyContent:"center",textDecoration:"none"}}>Open Supabase SQL Editor →</a>
+            <button className="btn btn-s" onClick={()=>setShowSetupSql(false)}>Close</button>
+          </div>
+        </div>
+      </div>
+    </div>}
   </div>;
 }
 
