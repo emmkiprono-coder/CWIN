@@ -1340,6 +1340,62 @@ const seedSchedules=[
   {id:"SC15",caregiverId:"CG4",clientId:"CL2",date:toISO(addDays(getMonday(now()),7)),startTime:"11:00",endTime:"19:00",tasks:["Full day care","Meals","Dog care","Laundry"],notes:"",status:"draft",color:"#3f4749"},
 ];
 
+// ─── BATCH 1 SEED: EVV VISITS, eMAR, E-SIGNATURES ───────────────────
+const _mon=getMonday(now());
+const seedVisits=[
+  {id:"VIS1",scheduleId:"SC1",caregiverId:"CG1",clientId:"CL1",date:toISO(addDays(_mon,0)),clockIn:"07:58",clockOut:"14:03",clockInGps:{lat:41.5731,lng:-87.7846,accuracy:8},clockOutGps:{lat:41.5731,lng:-87.7846,accuracy:10},clockInSelfie:null,clockOutSelfie:null,geofenceIn:true,geofenceOut:true,tasksVerified:["Morning routine assist","Prepare lunch","Medication reminder"],status:"verified",notes:"All tasks completed. Client in good spirits."},
+  {id:"VIS2",scheduleId:"SC3",caregiverId:"CG3",clientId:"CL3",date:toISO(addDays(_mon,0)),clockIn:"08:12",clockOut:"13:00",clockInGps:{lat:41.5700,lng:-87.8060,accuracy:15},clockOutGps:{lat:41.5700,lng:-87.8060,accuracy:12},clockInSelfie:null,clockOutSelfie:null,geofenceIn:true,geofenceOut:true,tasksVerified:["Morning routine","Breakfast","Medication","Chair exercises"],status:"verified",notes:"Clocked in 12 min late — traffic on I-57."},
+  {id:"VIS3",scheduleId:"SC2",caregiverId:"CG4",clientId:"CL2",date:toISO(addDays(_mon,0)),clockIn:"11:02",clockOut:null,clockInGps:{lat:41.5950,lng:-87.7320,accuracy:20},clockOutGps:null,clockInSelfie:null,clockOutSelfie:null,geofenceIn:true,geofenceOut:null,tasksVerified:[],status:"in_progress",notes:""},
+];
+// Client GPS coordinates for geofencing (50m radius)
+const CLIENT_GEO={CL1:{lat:41.5731,lng:-87.7846,radius:50},CL2:{lat:41.5950,lng:-87.7320,radius:50},CL3:{lat:41.5700,lng:-87.8060,radius:50}};
+
+const seedMedRecords=[
+  {id:"MR1",clientId:"CL1",medName:"Lisinopril 10mg",dose:"1 tablet",scheduledTime:"08:00",date:toISO(addDays(_mon,0)),status:"given",administeredBy:"CG1",administeredAt:"08:05",route:"Oral",notes:""},
+  {id:"MR2",clientId:"CL1",medName:"Donepezil 5mg",dose:"1 tablet",scheduledTime:"08:00",date:toISO(addDays(_mon,0)),status:"given",administeredBy:"CG1",administeredAt:"08:05",route:"Oral",notes:""},
+  {id:"MR3",clientId:"CL1",medName:"Acetaminophen 500mg PRN",dose:"1-2 tablets",scheduledTime:"PRN",date:toISO(addDays(_mon,0)),status:"held",administeredBy:"CG1",administeredAt:"",route:"Oral",notes:"Client reported no pain — held."},
+  {id:"MR4",clientId:"CL3",medName:"Carbidopa-Levodopa 25/100",dose:"1 tablet",scheduledTime:"08:00",date:toISO(addDays(_mon,0)),status:"given",administeredBy:"CG3",administeredAt:"08:15",route:"Oral",notes:"Timing critical — given with breakfast."},
+  {id:"MR5",clientId:"CL3",medName:"Carbidopa-Levodopa 25/100",dose:"1 tablet",scheduledTime:"12:00",date:toISO(addDays(_mon,0)),status:"missed",administeredBy:"",administeredAt:"",route:"Oral",notes:"Caregiver shift ended before noon dose — FLAG: coverage gap."},
+  {id:"MR6",clientId:"CL2",medName:"Metformin 500mg",dose:"1 tablet",scheduledTime:"12:00",date:toISO(addDays(_mon,0)),status:"given",administeredBy:"CG4",administeredAt:"12:10",route:"Oral",notes:"With lunch."},
+  {id:"MR7",clientId:"CL2",medName:"Furosemide 20mg",dose:"1 tablet",scheduledTime:"08:00",date:toISO(addDays(_mon,0)),status:"refused",administeredBy:"CG4",administeredAt:"",route:"Oral",notes:"Client refused — said it makes him use bathroom too much. Notified family."},
+];
+
+const seedSignatureDocs=[
+  {id:"SIG1",type:"care_plan",clientId:"CL1",title:"Personalized Care Plan — Becky Sutton",status:"signed",signedBy:"Tom Sutton",signedByRole:"Son / POA",signedAt:"2026-02-01T14:30:00",sentAt:"2026-01-28T10:00:00",content:"CARE PLAN SUMMARY\n\nClient: Becky Sutton (78)\nDiagnoses: Mild cognitive impairment, Hypertension, Osteoarthritis\n\nCARE GOALS:\n1. Maintain medication adherence (Lisinopril, Donepezil)\n2. Support safe mobility and fall prevention\n3. Provide companionship and cognitive engagement\n4. Light housekeeping and meal preparation\n\nSCHEDULE: Mon-Fri, 8am-2pm (30 hrs/week)\nASSIGNED CAREGIVER: Erolyn (primary)\n\nThis care plan has been reviewed with the client and family."},
+  {id:"SIG2",type:"service_agreement",clientId:"CL1",title:"Service Agreement — Becky Sutton",status:"signed",signedBy:"Tom Sutton",signedByRole:"Son / POA",signedAt:"2026-02-01T14:35:00",sentAt:"2026-01-28T10:00:00",content:"CWIN AT HOME — SERVICE AGREEMENT\n\nThis agreement is between CWIN At Home LLC and the client/responsible party.\n\nSERVICES: Non-medical home care including personal care, companionship, medication reminders, light housekeeping, and meal preparation.\n\nRATE: $50.00/hour (premium rate — complex care)\nBILLING: Biweekly via Zelle\nADMINISTRATIVE MARGIN: 20% (transparent pricing)\n\nCANCELLATION: 24-hour notice required.\nThis agreement may be modified with mutual written consent."},
+  {id:"SIG3",type:"hipaa",clientId:"CL3",title:"HIPAA Privacy Authorization — Steven Brown",status:"sent",signedBy:"",signedByRole:"",signedAt:"",sentAt:"2026-03-01T09:00:00",content:"HIPAA PRIVACY AUTHORIZATION\n\nI authorize CWIN At Home LLC to use and disclose my protected health information for the purposes of coordinating my care, billing, and communication with my designated family contacts.\n\nDESIGNATED CONTACTS:\n- Janet Brown (daughter)\n\nThis authorization may be revoked in writing at any time."},
+  {id:"SIG4",type:"care_plan",clientId:"CL2",title:"Personalized Care Plan — Linda Frank",status:"draft",signedBy:"",signedByRole:"",signedAt:"",sentAt:"",content:"CARE PLAN SUMMARY\n\nClient: Linda Frank\nDiagnoses: CHF (NYHA Class II), Type 2 Diabetes, Chronic back pain, Depression\n\nCARE GOALS:\n1. Daily weight monitoring (CHF)\n2. Blood glucose support\n3. Medication management (5 medications)\n4. Dog care assistance (Buddy)\n\nSCHEDULE: Mon-Fri, varies (40+ hrs/week)\nASSIGNED CAREGIVERS: Faith (primary), Tiffany"},
+];
+
+// ─── PHOTO MOMENTS (shared with family) ─────────────────────────────
+const seedMoments=[
+  {id:"MO1",clientId:"CL1",caregiverId:"CG1",date:toISO(addDays(_mon,-1)),caption:"Becky enjoyed the sunshine on the porch this afternoon ☀️",photo:null,reactions:["❤️","😊"]},
+  {id:"MO2",clientId:"CL3",caregiverId:"CG3",date:toISO(addDays(_mon,-2)),caption:"Steven completed all his chair exercises today — great progress!",photo:null,reactions:["👏"]},
+  {id:"MO3",clientId:"CL2",caregiverId:"CG4",date:toISO(addDays(_mon,-3)),caption:"Buddy got a nice walk while Linda had her lunch 🐕",photo:null,reactions:["❤️","🐾","😊"]},
+];
+
+// ─── BATCH 5 SEED: TRAINING ASSIGNMENTS, BG CHECKS, PTO ─────────────
+const seedTrainingAssignments=[
+  {id:"TA1",caregiverId:"CG2",moduleIdx:4,assignedDate:toISO(addDays(_mon,-10)),dueDate:toISO(addDays(_mon,4)),status:"in_progress",completedDate:"",certIssued:false},
+  {id:"TA2",caregiverId:"CG2",moduleIdx:7,assignedDate:toISO(addDays(_mon,-10)),dueDate:toISO(addDays(_mon,4)),status:"assigned",completedDate:"",certIssued:false},
+  {id:"TA3",caregiverId:"CG4",moduleIdx:1,assignedDate:toISO(addDays(_mon,-20)),dueDate:toISO(addDays(_mon,-2)),status:"assigned",completedDate:"",certIssued:false},
+  {id:"TA4",caregiverId:"CG1",moduleIdx:10,assignedDate:toISO(addDays(_mon,-30)),dueDate:toISO(addDays(_mon,-15)),status:"completed",completedDate:toISO(addDays(_mon,-18)),certIssued:true},
+];
+const seedBgChecks=[
+  {id:"BG1",caregiverId:"CG1",type:"Criminal Background (IL)",status:"clear",requestedDate:"2024-06-01",completedDate:"2024-06-10",expiresDate:"2026-06-10",provider:"Checkr",notes:"Clear — no records"},
+  {id:"BG2",caregiverId:"CG1",type:"IL Health Care Worker Registry",status:"clear",requestedDate:"2024-06-01",completedDate:"2024-06-08",expiresDate:"2026-06-08",provider:"IDPH",notes:"Verified, no findings"},
+  {id:"BG3",caregiverId:"CG2",type:"Criminal Background (IL)",status:"clear",requestedDate:"2025-01-05",completedDate:"2025-01-12",expiresDate:"2027-01-12",provider:"Checkr",notes:"Clear"},
+  {id:"BG4",caregiverId:"CG3",type:"Criminal Background (IL)",status:"expiring",requestedDate:"2024-08-25",completedDate:"2024-09-01",expiresDate:toISO(addDays(_mon,20)),provider:"Checkr",notes:"Renewal due soon"},
+  {id:"BG5",caregiverId:"CG3",type:"TB Test",status:"expired",requestedDate:"2024-09-01",completedDate:"2024-09-03",expiresDate:toISO(addDays(_mon,-10)),provider:"Quest Diagnostics",notes:"⚠️ EXPIRED — schedule renewal"},
+  {id:"BG6",caregiverId:"CG4",type:"Criminal Background (IL)",status:"clear",requestedDate:"2024-11-15",completedDate:"2024-11-22",expiresDate:"2026-11-22",provider:"Checkr",notes:"Clear"},
+  {id:"BG7",caregiverId:"CG4",type:"Driving Record (MVR)",status:"pending",requestedDate:toISO(addDays(_mon,-3)),completedDate:"",expiresDate:"",provider:"Checkr",notes:"Awaiting results"},
+];
+const seedPtoRequests=[
+  {id:"PT1",caregiverId:"CG1",type:"pto",startDate:toISO(addDays(_mon,14)),endDate:toISO(addDays(_mon,18)),status:"approved",reason:"Family vacation",requestedDate:toISO(addDays(_mon,-5))},
+  {id:"PT2",caregiverId:"CG3",type:"unavailable",startDate:toISO(addDays(_mon,3)),endDate:toISO(addDays(_mon,3)),status:"requested",reason:"Medical appointment",requestedDate:toISO(addDays(_mon,-1))},
+  {id:"PT3",caregiverId:"CG2",type:"preferred_off",startDate:toISO(addDays(_mon,6)),endDate:toISO(addDays(_mon,6)),status:"approved",reason:"Sundays preferred off",requestedDate:toISO(addDays(_mon,-20))},
+];
+
 // ─── ASSIGNMENTS (CG ↔ Client) ──────────────────────────────────────
 const seedAssignments=[
   {caregiverId:"CG1",clientId:"CL1",status:"active",startDate:"2024-07-01"},
@@ -2892,6 +2948,22 @@ export default function App(){
   ]);
   // Default bonus amounts (admin-configurable in Settings — TODO surface)
   const REFERRAL_BONUS_DEFAULTS={caregiver_to_caregiver:100,client_to_client:150,family_to_client:100,other:50};
+  // ═══ BATCH 1: FIELD OPS & COMPLIANCE ═══
+  // EVV visit verification records
+  const [visits,setVisits]=useState(seedVisits);
+  // eMAR medication administration records
+  const [medRecords,setMedRecords]=useState(seedMedRecords);
+  // E-signature documents
+  const [signatureDocs,setSignatureDocs]=useState(seedSignatureDocs);
+  // Photo moments shared with family
+  const [moments,setMoments]=useState(seedMoments);
+  // ═══ BATCH 5: HR & COMPLIANCE ═══
+  // Training assignments: {id, caregiverId, moduleIdx, assignedDate, dueDate, status: assigned|in_progress|completed, completedDate, certIssued}
+  const [trainingAssignments,setTrainingAssignments]=useState(seedTrainingAssignments);
+  // Background check records: {id, caregiverId, type, status, requestedDate, completedDate, expiresDate, provider, notes}
+  const [bgChecks,setBgChecks]=useState(seedBgChecks);
+  // PTO / availability: {id, caregiverId, type: pto|unavailable|preferred_off, startDate, endDate, status: requested|approved|denied, reason, requestedDate}
+  const [ptoRequests,setPtoRequests]=useState(seedPtoRequests);
   // Feature flags: per-entity toggle map
   // featureFlags = {clientId: {featureId: bool}, caregiverId: {featureId: bool}, global: {featureId: bool}}
   const [featureFlags,setFeatureFlags]=useState(()=>{
@@ -2978,12 +3050,12 @@ export default function App(){
 
   const nav=[
     {sec:"Overview"},{key:"dash",label:"Command Center",ico:"⚡"},
-    {sec:"Operations"},{key:"schedule",label:"Scheduling",ico:"📅",badge:draftScheds||null},{key:"clients",label:"Client Profiles",ico:"👤"},{key:"care",label:"Care Management",ico:"📋",badge:openInc||null},{key:"recon",label:"Reconciliation",ico:"🔍",badge:flaggedRecon||null},{key:"expenses",label:"Expenses",ico:"💰",badge:pendExp||null},{key:"gps_map",label:"Live GPS Map",ico:"📍"},{key:"shift_swap",label:"Shift Swaps",ico:"🔄",badge:swapRequests.filter(s=>s.status==="open").length||null},{key:"supplies",label:"Supply Tracking",ico:"📦",badge:supplies.filter(s=>s.qty<=s.reorderAt).length||null},
+    {sec:"Operations"},{key:"schedule",label:"Scheduling",ico:"📅",badge:draftScheds||null},{key:"clients",label:"Client Profiles",ico:"👤"},{key:"care",label:"Care Management",ico:"📋",badge:openInc||null},{key:"recon",label:"Reconciliation",ico:"🔍",badge:flaggedRecon||null},{key:"expenses",label:"Expenses",ico:"💰",badge:pendExp||null},{key:"gps_map",label:"Live GPS Map",ico:"📍"},{key:"evv",label:"Visit Verification",ico:"✅"},{key:"emar",label:"Medication Records",ico:"💊"},{key:"shift_swap",label:"Shift Swaps",ico:"🔄",badge:swapRequests.filter(s=>s.status==="open").length||null},{key:"supplies",label:"Supply Tracking",ico:"📦",badge:supplies.filter(s=>s.qty<=s.reorderAt).length||null},
     {sec:"Finance"},{key:"billing",label:"Billing & Invoices",ico:"🧾"},{key:"payroll",label:"Payroll & Pay Slips",ico:"💵"},{key:"rates",label:"Rate Cards",ico:"💲"},
     {sec:"Growth"},{key:"training",label:"Training Academy",ico:"🎓"},{key:"recruiting",label:"Recruiting",ico:"📢",badge:newApps||null},{key:"marketing",label:"Marketing",ico:"📈"},{key:"events",label:"Events & Wellness",ico:"🌱"},
-    {sec:"Compliance"},{key:"compliance",label:"Compliance Center",ico:"🛡️",badge:overdue||null},{key:"audit",label:"Audit Log",ico:"📜"},
+    {sec:"Compliance"},{key:"compliance",label:"Compliance Center",ico:"🛡️",badge:overdue||null},{key:"esign",label:"Documents & E-Sign",ico:"✍️"},{key:"audit",label:"Audit Log",ico:"📜"},
     {sec:"AI"},{key:"ai_hub",label:"AI Command",ico:"🤖"},
-    {sec:"Connections"},{key:"portal",label:"Client Portal",ico:"🏠"},{key:"family",label:"Family Portal",ico:"👨‍👩‍👧"},{key:"team",label:"Team",ico:"👥"},
+    {sec:"Connections"},{key:"portal",label:"Client Portal",ico:"🏠"},{key:"family",label:"Family Portal",ico:"👨‍👩‍👧"},{key:"team",label:"Team",ico:"👥"},{key:"hr",label:"Workforce HR",ico:"🗂️"},
     {sec:"Admin"},{key:"features",label:"Feature Management",ico:"⚙️"},{key:"notifications",label:"Notifications",ico:"🔔",badge:notifications.filter(n=>!n.read).length||null},{key:"incident_settings",label:"AI Incident Settings",ico:"🤖"},{key:"users",label:"User Management",ico:"🔐"},
   ];
 
@@ -3089,13 +3161,17 @@ export default function App(){
       {pg==="training"&&<TrainingPage caregivers={caregivers} progress={trainingProgress} setProgress={setTrainingProgress} modal={modal} setModal={setModal}/>}
       {pg==="events"&&<EventsPage events={events} setEvents={setEvents} clients={clients}/>}
       {pg==="portal"&&<ClientPortalPage clients={clients} caregivers={caregivers} notify={notify} assignments={assignments} sel={portalClient} setSel={setPortalClient} serviceRequests={serviceRequests} setServiceRequests={setServiceRequests} surveys={surveys} setSurveys={setSurveys} careGoals={careGoals} vitals={vitals} setVitals={setVitals} documents={documents} careNotes={careNotes} events={events} expenses={expenses} familyMsgs={familyMsgs} setFamilyMsgs={setFamilyMsgs} notifications={notifications} onReferCG={ap=>setCGApplicants(p=>[ap,...p])} onReferClient={ld=>setClientLeads(p=>[ld,...p])}/>}
-      {pg==="family"&&<FamilyPage clients={clients} familyMsgs={familyMsgs} setFamilyMsgs={setFamilyMsgs} careNotes={careNotes} incidents={incidents} events={events}/>}
+      {pg==="family"&&<FamilyPage clients={clients} familyMsgs={familyMsgs} setFamilyMsgs={setFamilyMsgs} careNotes={careNotes} incidents={incidents} events={events} moments={moments} setMoments={setMoments} caregivers={caregivers}/>}
       {pg==="team"&&<TeamPage caregivers={caregivers} setCaregivers={setCaregivers} progress={trainingProgress} clients={clients} assignments={assignments} setAssignments={setAssignments}/>}
       {pg==="users"&&<UserManagementPage allUsers={allUsers} setAllUsers={setAllUsers}/>}
       {pg==="features"&&<FeatureManagementPage featureFlags={featureFlags} setFeatureFlags={setFeatureFlags} isFeatureEnabled={isFeatureEnabled} toggleFeature={toggleFeature} clients={clients} caregivers={caregivers} logAction={logAction}/>}
       {pg==="gps_map"&&<LiveGPSMapPage caregivers={caregivers} clients={clients} schedules={schedules} livePositions={livePositions}/>}
       {pg==="shift_swap"&&<ShiftSwapPage swapRequests={swapRequests} setSwapRequests={setSwapRequests} caregivers={caregivers} clients={clients} schedules={schedules} setSchedules={setSchedules} notify={notify}/>}
       {pg==="supplies"&&<SupplyPage supplies={supplies} setSupplies={setSupplies} clients={clients}/>}
+      {pg==="evv"&&<VisitVerificationPage visits={visits} setVisits={setVisits} schedules={schedules} caregivers={caregivers} clients={clients} notify={notify}/>}
+      {pg==="emar"&&<EMARPage medRecords={medRecords} setMedRecords={setMedRecords} clients={clients} caregivers={caregivers} notify={notify}/>}
+      {pg==="esign"&&<ESignaturePage signatureDocs={signatureDocs} setSignatureDocs={setSignatureDocs} clients={clients} notify={notify}/>}
+      {pg==="hr"&&<WorkforceHRPage caregivers={caregivers} trainingProgress={trainingProgress} trainingAssignments={trainingAssignments} setTrainingAssignments={setTrainingAssignments} bgChecks={bgChecks} setBgChecks={setBgChecks} ptoRequests={ptoRequests} setPtoRequests={setPtoRequests} schedules={schedules} notify={notify}/>}
       {pg==="audit"&&<AuditLogPage auditLog={auditLog} clients={clients} caregivers={caregivers} allUsers={allUsers}/>}
       {pg==="notifications"&&<NotificationsPage notifications={notifications} setNotifications={setNotifications} allUsers={allUsers} clients={clients} caregivers={caregivers} incidents={incidents} setIncidents={setIncidents} expenses={expenses} setExpenses={setExpenses}/>}
       {pg==="incident_settings"&&<IncidentSettingsPage prompts={incidentPrompts} setPrompts={setIncidentPrompts}/>}
@@ -5673,17 +5749,25 @@ function EventsPage({events,setEvents,clients}){
 // ═══════════════════════════════════════════════════════════════════════
 // FAMILY PORTAL
 // ═══════════════════════════════════════════════════════════════════════
-function FamilyPage({clients,familyMsgs,setFamilyMsgs,careNotes,incidents,events}){
+function FamilyPage({clients,familyMsgs,setFamilyMsgs,careNotes,incidents,events,moments,setMoments,caregivers}){
   const [selClient,setSelClient]=useState("CL2");
   const [msg,setMsg]=useState("");
+  const [momentCaption,setMomentCaption]=useState("");
+  const [momentPhoto,setMomentPhoto]=useState(null);
   const cl=clients.find(c=>c.id===selClient);
   const msgs=familyMsgs.filter(m=>m.clientId===selClient).sort((a,b)=>new Date(a.date)-new Date(b.date));
   const contacts=cl?.familyPortal?.contacts||[];
   const clNotes=careNotes.filter(n=>n.clientId===selClient).sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,5);
   const clInc=incidents.filter(i=>i.clientId===selClient&&i.familyNotified);
   const clEvents=events.filter(e=>e.clientId===selClient&&new Date(e.date)>=now());
+  const clMoments=(moments||[]).filter(m=>m.clientId===selClient).sort((a,b)=>new Date(b.date)-new Date(a.date));
 
   const sendMsg=()=>{if(!msg.trim())return;setFamilyMsgs(p=>[...p,{id:"FM"+uid(),clientId:selClient,from:"CWIN Care Team",fromType:"caregiver",date:now().toISOString(),text:msg}]);setMsg("");};
+  const shareMoment=()=>{
+    if(!momentCaption.trim()&&!momentPhoto)return;
+    setMoments(p=>[{id:"MO"+uid(),clientId:selClient,caregiverId:caregivers?.[0]?.id||"CG1",date:now().toISOString(),caption:momentCaption,photo:momentPhoto,reactions:[]},...p]);
+    setMomentCaption("");setMomentPhoto(null);
+  };
 
   return <div>
     <div className="hdr"><div><h2>Family Portal</h2><div className="hdr-sub">Secure communication and updates for authorized family members</div></div>
@@ -5694,6 +5778,32 @@ function FamilyPage({clients,familyMsgs,setFamilyMsgs,careNotes,incidents,events
 
     <div style={{display:"grid",gridTemplateColumns:"1fr 340px",gap:14}}>
       <div>
+        {/* PHOTO MOMENTS */}
+        <div className="card">
+          <div className="card-h"><h3>📸 Moments & Photos</h3><span className="tag tag-ok">Shared with family</span></div>
+          <div style={{padding:"14px 18px",borderBottom:"1px solid var(--bdr)",background:"var(--bg)"}}>
+            {momentPhoto&&<div style={{position:"relative",marginBottom:8}}><img src={momentPhoto} style={{width:"100%",maxHeight:240,objectFit:"cover"}}/><button className="btn btn-sm btn-s" style={{position:"absolute",top:8,right:8}} onClick={()=>setMomentPhoto(null)}>Remove</button></div>}
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              <label className="btn btn-sm btn-s" style={{cursor:"pointer"}}>📷 Photo<input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{const f=e.target.files[0];if(f){if(f.size>5*1024*1024){alert("Max 5MB");return;}const r=new FileReader();r.onload=ev=>setMomentPhoto(ev.target.result);r.readAsDataURL(f);}}}/></label>
+              <input value={momentCaption} onChange={e=>setMomentCaption(e.target.value)} placeholder="Share a moment with the family..." style={{flex:1,padding:"8px 12px",border:"1px solid var(--bdr)",fontSize:13,fontFamily:"var(--f)"}} onKeyDown={e=>e.key==="Enter"&&shareMoment()}/>
+              <button className="btn btn-sm btn-p" onClick={shareMoment} disabled={!momentCaption.trim()&&!momentPhoto}>Share</button>
+            </div>
+          </div>
+          {clMoments.length===0?<div className="empty" style={{padding:"20px"}}>No moments shared yet. Caregivers can post daily photos and updates here for the family to enjoy.</div>:
+          clMoments.map(m=>{const cg=caregivers?.find(c=>c.id===m.caregiverId);return <div key={m.id} style={{padding:"14px 18px",borderBottom:"1px solid var(--bdr)"}}>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"var(--t2)",marginBottom:6}}><span>📷 {cg?.name||"Care Team"}</span><span>{fmtRel(m.date)}</span></div>
+            {m.photo&&<img src={m.photo} style={{width:"100%",maxHeight:280,objectFit:"cover",marginBottom:8}}/>}
+            {!m.photo&&<div style={{height:120,background:"linear-gradient(135deg,#f5f2eb,#e8e0d0)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:32,marginBottom:8}}>📷</div>}
+            <div style={{fontSize:13,lineHeight:1.5}}>{m.caption}</div>
+            <div style={{display:"flex",gap:6,marginTop:8,alignItems:"center"}}>
+              {m.reactions?.length>0&&<div style={{fontSize:14}}>{m.reactions.join(" ")}</div>}
+              <div style={{display:"flex",gap:4,marginLeft:"auto"}}>
+                {["❤️","😊","👏","🐾"].map(emoji=><button key={emoji} onClick={()=>setMoments(p=>p.map(x=>x.id===m.id?{...x,reactions:[...(x.reactions||[]),emoji]}:x))} style={{border:"none",background:"none",cursor:"pointer",fontSize:16,opacity:.6}} onMouseEnter={e=>e.currentTarget.style.opacity=1} onMouseLeave={e=>e.currentTarget.style.opacity=.6}>{emoji}</button>)}
+              </div>
+            </div>
+          </div>;})}
+        </div>
+
         {/* Authorized Contacts */}
         <div className="card"><div className="card-h"><h3>Authorized Family Contacts</h3></div>
           {contacts.map((fc,i)=><div key={i} style={{padding:"10px 18px",borderBottom:"1px solid var(--bdr)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
@@ -6609,6 +6719,716 @@ Be balanced, specific, and honest. Focus on patterns across answers, not single 
         })}
       </tbody></table></div>
     </div>}
+  </div>;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// BATCH 1.1 — VISIT VERIFICATION (EVV)
+// ═══════════════════════════════════════════════════════════════════════
+function VisitVerificationPage({visits,setVisits,schedules,caregivers,clients,notify}){
+  const [sel,setSel]=useState(null);
+  const [clockModal,setClockModal]=useState(null); // {schedule, mode:"in"|"out"}
+  const [selfieData,setSelfieData]=useState(null);
+  const [gpsStatus,setGpsStatus]=useState(null);
+  const today_=today();
+
+  // Haversine distance in meters
+  const distM=(a,b)=>{
+    if(!a||!b)return null;
+    const R=6371000,toR=x=>x*Math.PI/180;
+    const dLat=toR(b.lat-a.lat),dLng=toR(b.lng-a.lng);
+    const h=Math.sin(dLat/2)**2+Math.cos(toR(a.lat))*Math.cos(toR(b.lat))*Math.sin(dLng/2)**2;
+    return Math.round(R*2*Math.atan2(Math.sqrt(h),Math.sqrt(1-h)));
+  };
+
+  const todaySchedules=(schedules||[]).filter(s=>s.date===today_&&s.status==="published");
+  const todayVisits=visits.filter(v=>v.date===today_);
+  const visitFor=(schedId)=>todayVisits.find(v=>v.scheduleId===schedId);
+
+  const verifiedCount=todayVisits.filter(v=>v.status==="verified").length;
+  const inProgressCount=todayVisits.filter(v=>v.status==="in_progress").length;
+  const flaggedCount=todayVisits.filter(v=>v.status==="flagged"||v.geofenceIn===false).length;
+
+  // Simulate capturing GPS (in production: navigator.geolocation.getCurrentPosition)
+  const captureGps=(clientId)=>{
+    const geo=CLIENT_GEO[clientId];
+    if(!geo)return{lat:41.5731,lng:-87.7846,accuracy:12};
+    // Simulate caregiver near client home (small random offset)
+    const jitter=()=>(Math.random()-0.5)*0.0008; // ~40m
+    return{lat:geo.lat+jitter(),lng:geo.lng+jitter(),accuracy:Math.round(8+Math.random()*15)};
+  };
+
+  const doClockIn=(sched)=>{
+    const gps=captureGps(sched.clientId);
+    const geo=CLIENT_GEO[sched.clientId];
+    const dist=geo?distM(gps,geo):null;
+    const inFence=dist!=null?dist<=geo.radius:true;
+    const nowT=new Date().toLocaleTimeString("en-US",{hour12:false,hour:"2-digit",minute:"2-digit"});
+    const newVisit={
+      id:"VIS"+uid(),scheduleId:sched.id,caregiverId:sched.caregiverId,clientId:sched.clientId,date:today_,
+      clockIn:nowT,clockOut:null,clockInGps:gps,clockOutGps:null,
+      clockInSelfie:selfieData,clockOutSelfie:null,
+      geofenceIn:inFence,geofenceOut:null,tasksVerified:[],
+      status:inFence?"in_progress":"flagged",
+      notes:inFence?"":`⚠️ GPS ${dist}m from client home (geofence ${geo?.radius}m) — verify location.`
+    };
+    setVisits(p=>[newVisit,...p]);
+    if(!inFence&&notify)notify("U1","alert","EVV Geofence Alert",`${caregivers.find(c=>c.id===sched.caregiverId)?.name} clocked in ${dist}m from ${clients.find(c=>c.id===sched.clientId)?.name}'s home`,{});
+    setClockModal(null);setSelfieData(null);
+  };
+
+  const doClockOut=(visit,sched)=>{
+    const gps=captureGps(visit.clientId);
+    const geo=CLIENT_GEO[visit.clientId];
+    const dist=geo?distM(gps,geo):null;
+    const inFence=dist!=null?dist<=geo.radius:true;
+    const nowT=new Date().toLocaleTimeString("en-US",{hour12:false,hour:"2-digit",minute:"2-digit"});
+    setVisits(p=>p.map(v=>v.id===visit.id?{...v,clockOut:nowT,clockOutGps:gps,clockOutSelfie:selfieData,geofenceOut:inFence,tasksVerified:sched?.tasks||[],status:inFence&&v.geofenceIn?"verified":"flagged"}:v));
+    setClockModal(null);setSelfieData(null);
+  };
+
+  return <div>
+    <div className="hdr"><div><h2>Visit Verification (EVV)</h2><div className="hdr-sub">Electronic Visit Verification · GPS geofence + selfie · 21st Century Cures Act compliant</div></div></div>
+
+    <div className="ai-card" style={{marginBottom:14,background:"linear-gradient(135deg,#0c4a6e,#075985)"}}>
+      <h4 style={{color:"#fff"}}>📍 What is EVV?</h4>
+      <p style={{color:"rgba(255,255,255,.85)"}}>Electronic Visit Verification confirms <strong>who</strong> provided care, <strong>where</strong> (GPS geofence), <strong>when</strong> (clock-in/out timestamps), and <strong>what</strong> services were delivered. Required for Medicaid-funded personal care under the 21st Century Cures Act. CWIN uses selfie + GPS verification to protect against time fraud and ensure accurate billing.</p>
+    </div>
+
+    <div className="sg">
+      <div className="sc ok"><span className="sl">Verified Today</span><span className="sv">{verifiedCount}</span><span className="ss">Clock-in + out complete</span></div>
+      <div className="sc bl"><span className="sl">In Progress</span><span className="sv">{inProgressCount}</span><span className="ss">Clocked in, on shift</span></div>
+      <div className="sc er"><span className="sl">Flagged</span><span className="sv">{flaggedCount}</span><span className="ss">Geofence/time issues</span></div>
+      <div className="sc wn"><span className="sl">Today's Shifts</span><span className="sv">{todaySchedules.length}</span><span className="ss">{todaySchedules.length-todayVisits.length} not yet started</span></div>
+    </div>
+
+    {/* Today's shifts with clock in/out */}
+    <div className="card" style={{marginBottom:14}}>
+      <div className="card-h"><h3>📋 Today's Shifts — {fmtD(today_)}</h3></div>
+      {todaySchedules.length===0?<div className="empty">No published shifts scheduled for today.</div>:
+      todaySchedules.map(sched=>{
+        const cg=caregivers.find(c=>c.id===sched.caregiverId);
+        const cl=clients.find(c=>c.id===sched.clientId);
+        const v=visitFor(sched.id);
+        return <div key={sched.id} style={{padding:"14px 18px",borderBottom:"var(--border-thin)",display:"flex",gap:14,alignItems:"center"}}>
+          <ProfileAvatar name={cg?.name||"?"} photo={cg?.photo} size={44}/>
+          <div style={{flex:1}}>
+            <div style={{fontWeight:600,fontSize:14}}>{cg?.name} → {cl?.name}</div>
+            <div style={{fontSize:12,color:"var(--t2)"}}>Scheduled {sched.startTime}–{sched.endTime}</div>
+            {v&&<div style={{fontSize:11,marginTop:4,display:"flex",gap:8,flexWrap:"wrap"}}>
+              {v.clockIn&&<span className="tag tag-ok">🟢 In {v.clockIn}</span>}
+              {v.clockOut&&<span className="tag tag-bl">🔴 Out {v.clockOut}</span>}
+              {v.geofenceIn===true&&<span className="tag tag-ok">📍 Geofence OK</span>}
+              {v.geofenceIn===false&&<span className="tag tag-er">⚠️ Outside geofence</span>}
+            </div>}
+          </div>
+          <div style={{display:"flex",gap:6}}>
+            {!v&&<button className="btn btn-sm btn-ok" onClick={()=>{setSelfieData(null);setClockModal({schedule:sched,mode:"in"});}}>🟢 Clock In</button>}
+            {v&&v.status==="in_progress"&&<button className="btn btn-sm btn-bl" onClick={()=>{setSelfieData(null);setClockModal({schedule:sched,mode:"out",visit:v});}}>🔴 Clock Out</button>}
+            {v&&<button className="btn btn-sm btn-s" onClick={()=>setSel(v)}>View</button>}
+          </div>
+        </div>;
+      })}
+    </div>
+
+    {/* Visit history */}
+    <div className="card">
+      <div className="card-h"><h3>📜 Visit History</h3></div>
+      <div className="tw"><table style={{fontSize:12}}><thead><tr><th>Date</th><th>Caregiver</th><th>Client</th><th>In</th><th>Out</th><th>Geofence</th><th>Status</th><th></th></tr></thead><tbody>
+        {visits.slice().sort((a,b)=>(b.date+(b.clockIn||"")).localeCompare(a.date+(a.clockIn||""))).map(v=>{
+          const cg=caregivers.find(c=>c.id===v.caregiverId);const cl=clients.find(c=>c.id===v.clientId);
+          return <tr key={v.id}>
+            <td>{fmtD(v.date)}</td><td style={{fontWeight:600}}>{cg?.name||"—"}</td><td>{cl?.name||"—"}</td>
+            <td>{v.clockIn||"—"}</td><td>{v.clockOut||"—"}</td>
+            <td>{v.geofenceIn===true?"✅":v.geofenceIn===false?"⚠️":"—"}</td>
+            <td><span className={`tag ${v.status==="verified"?"tag-ok":v.status==="in_progress"?"tag-bl":v.status==="flagged"?"tag-er":"tag-wn"}`}>{v.status.replace("_"," ")}</span></td>
+            <td><button className="btn btn-sm btn-s" onClick={()=>setSel(v)}>View</button></td>
+          </tr>;
+        })}
+      </tbody></table></div>
+    </div>
+
+    {/* Clock In/Out Modal */}
+    {clockModal&&(()=>{const sched=clockModal.schedule;const cg=caregivers.find(c=>c.id===sched.caregiverId);const cl=clients.find(c=>c.id===sched.clientId);const geo=CLIENT_GEO[sched.clientId];
+      return <div className="modal-bg" onClick={()=>{setClockModal(null);setSelfieData(null);}}>
+      <div className="modal" style={{maxWidth:480}} onClick={e=>e.stopPropagation()}>
+        <div className="modal-h">{clockModal.mode==="in"?"🟢 Clock In":"🔴 Clock Out"} — {cg?.name}<button className="btn btn-sm btn-s" onClick={()=>{setClockModal(null);setSelfieData(null);}}>✕</button></div>
+        <div className="modal-b">
+          <div style={{padding:"10px 14px",background:"var(--bg)",marginBottom:12}}>
+            <div style={{fontSize:13,fontWeight:600}}>{cl?.name}</div>
+            <div style={{fontSize:11,color:"var(--t2)"}}>Scheduled {sched.startTime}–{sched.endTime} · {fmtD(today_)}</div>
+          </div>
+
+          {/* Selfie capture */}
+          <div style={{marginBottom:12}}>
+            <div style={{fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:.5,color:"var(--t2)",marginBottom:6}}>📸 Identity Selfie</div>
+            {selfieData?<div style={{position:"relative"}}>
+              <img src={selfieData} alt="selfie" style={{width:"100%",maxHeight:200,objectFit:"cover",border:"2px solid var(--ok)"}}/>
+              <button className="btn btn-sm btn-s" style={{position:"absolute",top:8,right:8}} onClick={()=>setSelfieData(null)}>Retake</button>
+            </div>:<label className="btn btn-s" style={{width:"100%",justifyContent:"center",cursor:"pointer",padding:"16px"}}>
+              📷 Capture Selfie
+              <input type="file" accept="image/*" capture="user" style={{display:"none"}} onChange={e=>{const f=e.target.files[0];if(f){const r=new FileReader();r.onload=ev=>setSelfieData(ev.target.result);r.readAsDataURL(f);}}}/>
+            </label>}
+          </div>
+
+          {/* GPS geofence */}
+          <div style={{padding:"10px 14px",background:"#f0f9ff",border:"1px solid #7dd3fc",marginBottom:14,fontSize:12}}>
+            <div style={{fontWeight:700,color:"#0369a1",marginBottom:4}}>📍 GPS Location Verification</div>
+            <div style={{color:"#0c4a6e"}}>On clock-{clockModal.mode}, your device GPS will be captured and compared to {cl?.name}'s home location ({geo?.radius||50}m geofence). Location outside the geofence will be flagged for review.</div>
+          </div>
+
+          <button className="btn btn-p" style={{width:"100%"}} onClick={()=>{
+            if(clockModal.mode==="in")doClockIn(sched);
+            else doClockOut(clockModal.visit,sched);
+          }}>{clockModal.mode==="in"?"🟢 Confirm Clock In":"🔴 Confirm Clock Out"}</button>
+          <div style={{fontSize:10,color:"var(--t2)",marginTop:8,textAlign:"center"}}>In production, GPS captured via device geolocation. Selfie verified against caregiver profile photo.</div>
+        </div>
+      </div>
+    </div>;})()}
+
+    {/* Visit detail modal */}
+    {sel&&(()=>{const cg=caregivers.find(c=>c.id===sel.caregiverId);const cl=clients.find(c=>c.id===sel.clientId);const geo=CLIENT_GEO[sel.clientId];
+      const inDist=sel.clockInGps&&geo?distM(sel.clockInGps,geo):null;
+      const outDist=sel.clockOutGps&&geo?distM(sel.clockOutGps,geo):null;
+      return <div className="modal-bg" onClick={()=>setSel(null)}>
+      <div className="modal" style={{maxWidth:560,maxHeight:"92vh",overflow:"auto"}} onClick={e=>e.stopPropagation()}>
+        <div className="modal-h">📍 Visit Record<button className="btn btn-sm btn-s" onClick={()=>setSel(null)}>✕</button></div>
+        <div className="modal-b">
+          <div style={{display:"flex",gap:14,alignItems:"center",marginBottom:14,padding:14,background:"var(--bg)"}}>
+            <ProfileAvatar name={cg?.name||"?"} photo={cg?.photo} size={48} dark/>
+            <div><div style={{fontWeight:700,fontSize:15}}>{cg?.name}</div><div style={{fontSize:12,color:"var(--t2)"}}>→ {cl?.name} · {fmtD(sel.date)}</div></div>
+            <span className={`tag ${sel.status==="verified"?"tag-ok":sel.status==="in_progress"?"tag-bl":"tag-er"}`} style={{marginLeft:"auto"}}>{sel.status.replace("_"," ")}</span>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
+            <div style={{padding:"10px 14px",background:"var(--bg)"}}><div style={{fontSize:9,color:"var(--t2)",textTransform:"uppercase",fontWeight:700}}>Clock In</div><div style={{fontSize:16,fontWeight:600}}>{sel.clockIn||"—"}</div>{inDist!=null&&<div style={{fontSize:10,color:sel.geofenceIn?"var(--ok)":"var(--err)"}}>{sel.geofenceIn?"✅":"⚠️"} {inDist}m from home</div>}</div>
+            <div style={{padding:"10px 14px",background:"var(--bg)"}}><div style={{fontSize:9,color:"var(--t2)",textTransform:"uppercase",fontWeight:700}}>Clock Out</div><div style={{fontSize:16,fontWeight:600}}>{sel.clockOut||"—"}</div>{outDist!=null&&<div style={{fontSize:10,color:sel.geofenceOut?"var(--ok)":"var(--err)"}}>{sel.geofenceOut?"✅":"⚠️"} {outDist}m from home</div>}</div>
+          </div>
+          {(sel.clockInSelfie||sel.clockOutSelfie)&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
+            {sel.clockInSelfie&&<div><div style={{fontSize:9,color:"var(--t2)",textTransform:"uppercase",fontWeight:700,marginBottom:4}}>In Selfie</div><img src={sel.clockInSelfie} style={{width:"100%",maxHeight:160,objectFit:"cover"}}/></div>}
+            {sel.clockOutSelfie&&<div><div style={{fontSize:9,color:"var(--t2)",textTransform:"uppercase",fontWeight:700,marginBottom:4}}>Out Selfie</div><img src={sel.clockOutSelfie} style={{width:"100%",maxHeight:160,objectFit:"cover"}}/></div>}
+          </div>}
+          {sel.tasksVerified?.length>0&&<div style={{marginBottom:14}}>
+            <div style={{fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:.5,color:"var(--t2)",marginBottom:6}}>✅ Tasks Verified</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:4}}>{sel.tasksVerified.map((t,i)=><span key={i} className="tag tag-ok">{t}</span>)}</div>
+          </div>}
+          {sel.notes&&<div style={{padding:"10px 14px",background:sel.geofenceIn===false?"#fee2e2":"var(--bg)",fontSize:12,lineHeight:1.5}}><strong>Notes:</strong> {sel.notes}</div>}
+        </div>
+      </div>
+    </div>;})()}
+  </div>;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// BATCH 1.2 — eMAR (Medication Administration Record)
+// ═══════════════════════════════════════════════════════════════════════
+function EMARPage({medRecords,setMedRecords,clients,caregivers,notify}){
+  const [selClient,setSelClient]=useState(clients.filter(c=>c.status==="active")[0]?.id||"");
+  const [logModal,setLogModal]=useState(null); // {med, clientId}
+  const [logForm,setLogForm]=useState({status:"given",administeredBy:"",notes:""});
+  const [showAddSched,setShowAddSched]=useState(false);
+  const [schedForm,setSchedForm]=useState({medName:"",dose:"",scheduledTime:"08:00",route:"Oral"});
+  const today_=today();
+
+  const cl=clients.find(c=>c.id===selClient);
+  const clMeds=cl?.meds||[];
+  const todayRecords=medRecords.filter(r=>r.clientId===selClient&&r.date===today_);
+
+  const missedCount=medRecords.filter(r=>r.status==="missed").length;
+  const refusedToday=medRecords.filter(r=>r.date===today_&&r.status==="refused").length;
+  const givenToday=medRecords.filter(r=>r.date===today_&&r.status==="given").length;
+
+  const logMed=()=>{
+    const cg=caregivers.find(c=>c.id===logForm.administeredBy);
+    const rec={
+      id:"MR"+uid(),clientId:logModal.clientId,medName:logModal.medName,dose:logModal.dose||"As prescribed",
+      scheduledTime:logModal.scheduledTime||"PRN",date:today_,status:logForm.status,
+      administeredBy:logForm.administeredBy,administeredAt:logForm.status==="given"?new Date().toLocaleTimeString("en-US",{hour12:false,hour:"2-digit",minute:"2-digit"}):"",
+      route:logModal.route||"Oral",notes:logForm.notes
+    };
+    setMedRecords(p=>[rec,...p]);
+    if((logForm.status==="missed"||logForm.status==="refused")&&notify){
+      notify("U1","alert","Medication "+logForm.status,`${logModal.medName} for ${clients.find(c=>c.id===logModal.clientId)?.name} marked ${logForm.status}`,{clientId:logModal.clientId});
+    }
+    setLogModal(null);setLogForm({status:"given",administeredBy:"",notes:""});
+  };
+
+  return <div>
+    <div className="hdr"><div><h2>eMAR — Medication Records</h2><div className="hdr-sub">Electronic Medication Administration Record · track given, refused, missed, held</div></div></div>
+
+    <div className="sg">
+      <div className="sc ok"><span className="sl">Given Today</span><span className="sv">{givenToday}</span><span className="ss">Across all clients</span></div>
+      <div className="sc wn"><span className="sl">Refused Today</span><span className="sv">{refusedToday}</span><span className="ss">Client declined</span></div>
+      <div className="sc er"><span className="sl">Missed (All Time)</span><span className="sv">{missedCount}</span><span className="ss">⚠️ Requires review</span></div>
+      <div className="sc bl"><span className="sl">Total Records</span><span className="sv">{medRecords.length}</span><span className="ss">Full audit trail</span></div>
+    </div>
+
+    {missedCount>0&&<div className="ai-card" style={{background:"linear-gradient(135deg,#3d0000,#1a0000)",marginBottom:14}}>
+      <h4><span className="pulse" style={{background:"var(--err)"}}/>⚠️ Missed Medication Alerts</h4>
+      <p>{medRecords.filter(r=>r.status==="missed").slice(0,3).map(r=>`${r.medName} for ${clients.find(c=>c.id===r.clientId)?.name} (${fmtD(r.date)}${r.scheduledTime!=="PRN"?" at "+r.scheduledTime:""}). `).join("")}Missed medications must be documented and reported per care plan protocol.</p>
+    </div>}
+
+    {/* Client selector */}
+    <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
+      {clients.filter(c=>c.status==="active").map(c=><button key={c.id} className={`btn btn-sm ${selClient===c.id?"btn-p":"btn-s"}`} onClick={()=>setSelClient(c.id)}>{c.name}</button>)}
+    </div>
+
+    {cl&&<>
+    <div className="card" style={{marginBottom:14}}>
+      <div className="card-h"><h3>💊 {cl.name} — Medication List</h3>
+        <button className="btn btn-sm btn-s" onClick={()=>{setSchedForm({medName:"",dose:"",scheduledTime:"08:00",route:"Oral"});setShowAddSched(true);}}>+ Log PRN / Other</button>
+      </div>
+      {clMeds.length===0?<div className="empty">No medications on file for {cl.name}.</div>:
+      clMeds.map((med,i)=>{
+        const rec=todayRecords.find(r=>r.medName===med);
+        return <div key={i} style={{padding:"14px 18px",borderBottom:"var(--border-thin)",display:"flex",gap:14,alignItems:"center"}}>
+          <div style={{fontSize:28}}>💊</div>
+          <div style={{flex:1}}>
+            <div style={{fontWeight:600,fontSize:14}}>{med}</div>
+            {rec?<div style={{fontSize:11,marginTop:2}}>
+              <span className={`tag ${rec.status==="given"?"tag-ok":rec.status==="refused"?"tag-wn":rec.status==="missed"?"tag-er":"tag-bl"}`}>{rec.status==="given"?`✅ Given ${rec.administeredAt}`:rec.status==="refused"?"🚫 Refused":rec.status==="missed"?"⚠️ Missed":"⏸ Held"}</span>
+              {rec.administeredBy&&<span style={{color:"var(--t2)",marginLeft:8}}>by {caregivers.find(c=>c.id===rec.administeredBy)?.name}</span>}
+            </div>:<div style={{fontSize:11,color:"var(--t2)",marginTop:2}}>Not yet logged today</div>}
+          </div>
+          {!rec&&<button className="btn btn-sm btn-p" onClick={()=>{setLogModal({clientId:selClient,medName:med,dose:"",scheduledTime:"08:00",route:"Oral"});setLogForm({status:"given",administeredBy:caregivers[0]?.id||"",notes:""});}}>Log</button>}
+        </div>;
+      })}
+    </div>
+
+    {/* Today's MAR grid */}
+    <div className="card">
+      <div className="card-h"><h3>📋 Administration Log — {cl.name}</h3></div>
+      {todayRecords.length===0&&medRecords.filter(r=>r.clientId===selClient).length===0?<div className="empty">No administration records yet.</div>:
+      <div className="tw"><table style={{fontSize:12}}><thead><tr><th>Date</th><th>Medication</th><th>Dose</th><th>Sched</th><th>Status</th><th>By</th><th>At</th><th>Notes</th></tr></thead><tbody>
+        {medRecords.filter(r=>r.clientId===selClient).slice().sort((a,b)=>(b.date+(b.scheduledTime||"")).localeCompare(a.date+(a.scheduledTime||""))).map(r=>{
+          const cg=caregivers.find(c=>c.id===r.administeredBy);
+          return <tr key={r.id} style={{background:r.status==="missed"?"#fef2f2":r.status==="refused"?"#fffbeb":""}}>
+            <td>{fmtD(r.date)}</td><td style={{fontWeight:600}}>{r.medName}</td><td>{r.dose}</td><td>{r.scheduledTime}</td>
+            <td><span className={`tag ${r.status==="given"?"tag-ok":r.status==="refused"?"tag-wn":r.status==="missed"?"tag-er":"tag-bl"}`}>{r.status}</span></td>
+            <td>{cg?.name||"—"}</td><td>{r.administeredAt||"—"}</td><td style={{fontSize:11,color:"var(--t2)",maxWidth:160}}>{r.notes||""}</td>
+          </tr>;
+        })}
+      </tbody></table></div>}
+    </div>
+    </>}
+
+    {/* Log medication modal */}
+    {logModal&&<div className="modal-bg" onClick={()=>setLogModal(null)}>
+      <div className="modal" style={{maxWidth:480}} onClick={e=>e.stopPropagation()}>
+        <div className="modal-h">💊 Log: {logModal.medName}<button className="btn btn-sm btn-s" onClick={()=>setLogModal(null)}>✕</button></div>
+        <div className="modal-b">
+          <div className="fi" style={{marginBottom:10}}><label>Status</label><select value={logForm.status} onChange={e=>setLogForm(p=>({...p,status:e.target.value}))}>
+            <option value="given">✅ Given</option>
+            <option value="refused">🚫 Refused by client</option>
+            <option value="held">⏸ Held (per instruction)</option>
+            <option value="missed">⚠️ Missed</option>
+          </select></div>
+          <div className="fi" style={{marginBottom:10}}><label>Administered By</label><select value={logForm.administeredBy} onChange={e=>setLogForm(p=>({...p,administeredBy:e.target.value}))}>
+            <option value="">Select caregiver...</option>
+            {caregivers.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+          </select></div>
+          <div className="fg" style={{marginBottom:10}}>
+            <div className="fi"><label>Dose</label><input value={logModal.dose} onChange={e=>setLogModal(p=>({...p,dose:e.target.value}))} placeholder="e.g. 1 tablet"/></div>
+            <div className="fi"><label>Route</label><select value={logModal.route} onChange={e=>setLogModal(p=>({...p,route:e.target.value}))}><option>Oral</option><option>Topical</option><option>Injection</option><option>Inhaled</option><option>Other</option></select></div>
+          </div>
+          <div className="fi" style={{marginBottom:14}}><label>Notes {(logForm.status==="refused"||logForm.status==="missed"||logForm.status==="held")&&<span style={{color:"var(--err)"}}>(required)</span>}</label><textarea value={logForm.notes} onChange={e=>setLogForm(p=>({...p,notes:e.target.value}))} rows={3} style={{width:"100%"}} placeholder={logForm.status==="refused"?"Why did the client refuse? Was anyone notified?":logForm.status==="missed"?"Why was the dose missed?":"Optional notes"}/></div>
+          <button className="btn btn-p" style={{width:"100%"}} disabled={!logForm.administeredBy||((logForm.status!=="given")&&!logForm.notes.trim())} onClick={logMed}>Save Record</button>
+        </div>
+      </div>
+    </div>}
+
+    {/* Add PRN/other med log */}
+    {showAddSched&&<div className="modal-bg" onClick={()=>setShowAddSched(false)}>
+      <div className="modal" style={{maxWidth:480}} onClick={e=>e.stopPropagation()}>
+        <div className="modal-h">Log PRN / Other Medication<button className="btn btn-sm btn-s" onClick={()=>setShowAddSched(false)}>✕</button></div>
+        <div className="modal-b">
+          <div className="fi" style={{marginBottom:10}}><label>Medication Name</label><input value={schedForm.medName} onChange={e=>setSchedForm(p=>({...p,medName:e.target.value}))} placeholder="e.g. Ibuprofen 200mg PRN"/></div>
+          <div className="fg" style={{marginBottom:14}}>
+            <div className="fi"><label>Dose</label><input value={schedForm.dose} onChange={e=>setSchedForm(p=>({...p,dose:e.target.value}))} placeholder="1-2 tablets"/></div>
+            <div className="fi"><label>Time</label><input value={schedForm.scheduledTime} onChange={e=>setSchedForm(p=>({...p,scheduledTime:e.target.value}))} placeholder="PRN"/></div>
+          </div>
+          <button className="btn btn-p" style={{width:"100%"}} disabled={!schedForm.medName.trim()} onClick={()=>{
+            setLogModal({clientId:selClient,medName:schedForm.medName,dose:schedForm.dose,scheduledTime:schedForm.scheduledTime,route:schedForm.route});
+            setLogForm({status:"given",administeredBy:caregivers[0]?.id||"",notes:""});
+            setShowAddSched(false);
+          }}>Continue to Log</button>
+        </div>
+      </div>
+    </div>}
+  </div>;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// BATCH 1.3 — DIGITAL E-SIGNATURES
+// ═══════════════════════════════════════════════════════════════════════
+function ESignaturePage({signatureDocs,setSignatureDocs,clients,notify}){
+  const [sel,setSel]=useState(null);
+  const [showAdd,setShowAdd]=useState(false);
+  const [signMode,setSignMode]=useState(null); // doc being signed
+  const [signForm,setSignForm]=useState({signedBy:"",signedByRole:"",typed:""});
+  const emptyDoc={type:"care_plan",clientId:"",title:"",content:""};
+  const [form,setForm]=useState(emptyDoc);
+  const canvasRef=useRef(null);
+  const drawing=useRef(false);
+
+  const docTypes={care_plan:"Care Plan",service_agreement:"Service Agreement",consent:"Consent Form",hipaa:"HIPAA Authorization"};
+  const signed=signatureDocs.filter(d=>d.status==="signed");
+  const pending=signatureDocs.filter(d=>d.status==="sent");
+  const drafts=signatureDocs.filter(d=>d.status==="draft");
+
+  // Signature canvas drawing
+  const startDraw=(e)=>{drawing.current=true;draw(e);};
+  const endDraw=()=>{drawing.current=false;const c=canvasRef.current;if(c)c.getContext("2d").beginPath();};
+  const draw=(e)=>{
+    if(!drawing.current)return;
+    const c=canvasRef.current;if(!c)return;
+    const rect=c.getBoundingClientRect();
+    const x=(e.touches?e.touches[0].clientX:e.clientX)-rect.left;
+    const y=(e.touches?e.touches[0].clientY:e.clientY)-rect.top;
+    const ctx=c.getContext("2d");
+    ctx.lineWidth=2;ctx.lineCap="round";ctx.strokeStyle="#070707";
+    ctx.lineTo(x,y);ctx.stroke();ctx.beginPath();ctx.moveTo(x,y);
+  };
+  const clearCanvas=()=>{const c=canvasRef.current;if(c)c.getContext("2d").clearRect(0,0,c.width,c.height);};
+
+  const saveDoc=()=>{
+    if(form.id){setSignatureDocs(p=>p.map(d=>d.id===form.id?{...form}:d));}
+    else{setSignatureDocs(p=>[{...form,id:"SIG"+uid(),status:"draft",signedBy:"",signedByRole:"",signedAt:"",sentAt:""},...p]);}
+    setShowAdd(false);setForm(emptyDoc);
+  };
+
+  const sendDoc=(doc)=>{
+    setSignatureDocs(p=>p.map(d=>d.id===doc.id?{...d,status:"sent",sentAt:now().toISOString()}:d));
+    if(notify)notify("U1","alert","Document Sent for Signature",`${doc.title} sent to ${clients.find(c=>c.id===doc.clientId)?.name}`,{clientId:doc.clientId});
+  };
+
+  const completeSign=()=>{
+    const c=canvasRef.current;
+    const sigData=c?c.toDataURL():null;
+    setSignatureDocs(p=>p.map(d=>d.id===signMode.id?{...d,status:"signed",signedBy:signForm.signedBy,signedByRole:signForm.signedByRole,signedAt:now().toISOString(),signatureData:sigData}:d));
+    setSignMode(null);setSignForm({signedBy:"",signedByRole:"",typed:""});
+  };
+
+  return <div>
+    <div className="hdr"><div><h2>Documents & E-Signatures</h2><div className="hdr-sub">Care plans, service agreements, consent forms — sign digitally</div></div>
+      <button className="btn btn-p btn-sm" onClick={()=>{setForm(emptyDoc);setShowAdd(true);}}>+ New Document</button>
+    </div>
+
+    <div className="sg">
+      <div className="sc ok"><span className="sl">Signed</span><span className="sv">{signed.length}</span><span className="ss">Fully executed</span></div>
+      <div className="sc wn"><span className="sl">Awaiting Signature</span><span className="sv">{pending.length}</span><span className="ss">Sent, not yet signed</span></div>
+      <div className="sc bl"><span className="sl">Drafts</span><span className="sv">{drafts.length}</span><span className="ss">Not yet sent</span></div>
+      <div className="sc"><span className="sl">Total</span><span className="sv">{signatureDocs.length}</span><span className="ss">All documents</span></div>
+    </div>
+
+    {pending.length>0&&<div className="ai-card" style={{marginBottom:14}}>
+      <h4><span className="pulse" style={{background:"var(--warn)"}}/>Awaiting Signature</h4>
+      <p>{pending.map(d=>`${d.title} (sent ${fmtD(d.sentAt)}). `).join("")}Follow up with clients/families to complete these documents.</p>
+    </div>}
+
+    <div className="card">
+      <div className="card-h"><h3>📄 All Documents</h3></div>
+      {signatureDocs.length===0?<div className="empty">No documents yet. Click "+ New Document" to create one.</div>:
+      signatureDocs.map(doc=>{const cl=clients.find(c=>c.id===doc.clientId);
+        return <div key={doc.id} style={{padding:"14px 18px",borderBottom:"var(--border-thin)",display:"flex",gap:14,alignItems:"center"}}>
+          <div style={{fontSize:28}}>{doc.type==="care_plan"?"📋":doc.type==="service_agreement"?"📝":doc.type==="hipaa"?"🔒":"✍️"}</div>
+          <div style={{flex:1,cursor:"pointer"}} onClick={()=>setSel(doc)}>
+            <div style={{fontWeight:600,fontSize:14}}>{doc.title}</div>
+            <div style={{fontSize:11,color:"var(--t2)"}}>{docTypes[doc.type]} · {cl?.name||"—"}{doc.signedAt?` · Signed by ${doc.signedBy} (${doc.signedByRole}) ${fmtD(doc.signedAt)}`:doc.sentAt?` · Sent ${fmtD(doc.sentAt)}`:""}</div>
+          </div>
+          <span className={`tag ${doc.status==="signed"?"tag-ok":doc.status==="sent"?"tag-wn":"tag-bl"}`}>{doc.status}</span>
+          <div style={{display:"flex",gap:4}}>
+            <button className="btn btn-sm btn-s" onClick={()=>setSel(doc)}>View</button>
+            {doc.status==="draft"&&<button className="btn btn-sm btn-bl" onClick={()=>sendDoc(doc)}>📤 Send</button>}
+            {doc.status==="sent"&&<button className="btn btn-sm btn-ok" onClick={()=>{setSignMode(doc);setSignForm({signedBy:cl?.familyPortal?.contacts?.[0]?.name||"",signedByRole:"",typed:""});setTimeout(clearCanvas,100);}}>✍️ Sign</button>}
+          </div>
+        </div>;
+      })}
+    </div>
+
+    {/* Document viewer */}
+    {sel&&(()=>{const cl=clients.find(c=>c.id===sel.clientId);return <div className="modal-bg" onClick={()=>setSel(null)}>
+      <div className="modal" style={{maxWidth:640,maxHeight:"92vh",overflow:"auto"}} onClick={e=>e.stopPropagation()}>
+        <div className="modal-h">{sel.title}<button className="btn btn-sm btn-s" onClick={()=>setSel(null)}>✕</button></div>
+        <div className="modal-b">
+          <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
+            <span className="tag tag-bl">{docTypes[sel.type]}</span>
+            <span className="tag tag-pu">{cl?.name}</span>
+            <span className={`tag ${sel.status==="signed"?"tag-ok":sel.status==="sent"?"tag-wn":"tag-bl"}`}>{sel.status}</span>
+          </div>
+          <div style={{padding:"16px 20px",background:"#fff",border:"var(--border-thin)",fontSize:13,lineHeight:1.7,whiteSpace:"pre-wrap",fontFamily:"Inter,sans-serif"}}>{sel.content}</div>
+          {sel.status==="signed"&&<div style={{marginTop:14,padding:"14px 18px",background:"#f0fdf4",border:"1px solid #86efac"}}>
+            <div style={{fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:.5,color:"#166534",marginBottom:8}}>✅ Electronically Signed</div>
+            {sel.signatureData&&<img src={sel.signatureData} alt="signature" style={{maxHeight:80,marginBottom:8,background:"#fff",border:"1px solid #ddd"}}/>}
+            <div style={{fontSize:13,fontWeight:600}}>{sel.signedBy}</div>
+            <div style={{fontSize:11,color:"#166534"}}>{sel.signedByRole} · {new Date(sel.signedAt).toLocaleString("en-US")}</div>
+          </div>}
+          <div style={{display:"flex",gap:6,marginTop:14}}>
+            {sel.status==="draft"&&<><button className="btn btn-p" style={{flex:1}} onClick={()=>{sendDoc(sel);setSel(null);}}>📤 Send for Signature</button><button className="btn btn-s" onClick={()=>{setForm({...sel});setSel(null);setShowAdd(true);}}>✏️ Edit</button></>}
+            {sel.status==="sent"&&<button className="btn btn-ok" style={{flex:1}} onClick={()=>{setSignMode(sel);setSel(null);setSignForm({signedBy:cl?.familyPortal?.contacts?.[0]?.name||"",signedByRole:"",typed:""});setTimeout(clearCanvas,100);}}>✍️ Sign Now</button>}
+            <button className="btn btn-s" onClick={()=>setSel(null)}>Close</button>
+          </div>
+        </div>
+      </div>
+    </div>;})()}
+
+    {/* Signature capture modal */}
+    {signMode&&<div className="modal-bg" onClick={()=>setSignMode(null)}>
+      <div className="modal" style={{maxWidth:520}} onClick={e=>e.stopPropagation()}>
+        <div className="modal-h">✍️ Sign: {signMode.title}<button className="btn btn-sm btn-s" onClick={()=>setSignMode(null)}>✕</button></div>
+        <div className="modal-b">
+          <div className="fg" style={{marginBottom:10}}>
+            <div className="fi"><label>Full Name *</label><input value={signForm.signedBy} onChange={e=>setSignForm(p=>({...p,signedBy:e.target.value}))} placeholder="e.g. Tom Sutton"/></div>
+            <div className="fi"><label>Role / Relationship *</label><input value={signForm.signedByRole} onChange={e=>setSignForm(p=>({...p,signedByRole:e.target.value}))} placeholder="e.g. Son / POA"/></div>
+          </div>
+          <div style={{marginBottom:10}}>
+            <label style={{fontSize:11,fontWeight:600,display:"block",marginBottom:4}}>Draw Signature *</label>
+            <canvas ref={canvasRef} width={460} height={140} style={{width:"100%",height:140,border:"2px dashed #ccc",background:"#fff",touchAction:"none",cursor:"crosshair"}}
+              onMouseDown={startDraw} onMouseUp={endDraw} onMouseMove={draw} onMouseLeave={endDraw}
+              onTouchStart={startDraw} onTouchEnd={endDraw} onTouchMove={draw}/>
+            <button className="btn btn-sm btn-s" style={{marginTop:6}} onClick={clearCanvas}>Clear</button>
+          </div>
+          <div style={{padding:"10px 14px",background:"var(--bg)",fontSize:11,color:"var(--t2)",marginBottom:14,lineHeight:1.5}}>
+            By signing, you acknowledge that you have read and agree to this document. Your electronic signature is legally binding (E-SIGN Act, 2000). Signed timestamp and identity will be recorded.
+          </div>
+          <button className="btn btn-p" style={{width:"100%"}} disabled={!signForm.signedBy.trim()||!signForm.signedByRole.trim()} onClick={completeSign}>✅ Complete Signature</button>
+        </div>
+      </div>
+    </div>}
+
+    {/* Add/edit document */}
+    {showAdd&&<div className="modal-bg" onClick={()=>setShowAdd(false)}>
+      <div className="modal" style={{maxWidth:600,maxHeight:"92vh",overflow:"auto"}} onClick={e=>e.stopPropagation()}>
+        <div className="modal-h">{form.id?"Edit":"New"} Document<button className="btn btn-sm btn-s" onClick={()=>setShowAdd(false)}>✕</button></div>
+        <div className="modal-b">
+          <div className="fg" style={{marginBottom:10}}>
+            <div className="fi"><label>Type</label><select value={form.type} onChange={e=>setForm(p=>({...p,type:e.target.value}))}>{Object.entries(docTypes).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></div>
+            <div className="fi"><label>Client</label><select value={form.clientId} onChange={e=>setForm(p=>({...p,clientId:e.target.value}))}><option value="">Select...</option>{clients.filter(c=>c.status==="active").map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+          </div>
+          <div className="fi" style={{marginBottom:10}}><label>Title</label><input value={form.title} onChange={e=>setForm(p=>({...p,title:e.target.value}))} placeholder="e.g. Personalized Care Plan — Becky Sutton"/></div>
+          <div className="fi" style={{marginBottom:14}}><label>Content</label><textarea value={form.content} onChange={e=>setForm(p=>({...p,content:e.target.value}))} rows={10} style={{width:"100%",fontFamily:"Inter,sans-serif"}} placeholder="Document text..."/></div>
+          <button className="btn btn-p" style={{width:"100%"}} disabled={!form.title.trim()||!form.clientId} onClick={saveDoc}>{form.id?"Save Changes":"Create Document"}</button>
+        </div>
+      </div>
+    </div>}
+  </div>;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// BATCH 5 — WORKFORCE HR (Training Assignments, Background Checks, PTO)
+// ═══════════════════════════════════════════════════════════════════════
+function WorkforceHRPage({caregivers,trainingProgress,trainingAssignments,setTrainingAssignments,bgChecks,setBgChecks,ptoRequests,setPtoRequests,schedules,notify}){
+  const [tab,setTab]=useState("training");
+  const [showAssign,setShowAssign]=useState(false);
+  const [assignForm,setAssignForm]=useState({caregiverId:"",moduleIdx:0,dueDate:""});
+  const [showBg,setShowBg]=useState(false);
+  const [bgForm,setBgForm]=useState({caregiverId:"",type:"Criminal Background (IL)",provider:"Checkr",notes:""});
+  const [showPto,setShowPto]=useState(false);
+  const [ptoForm,setPtoForm]=useState({caregiverId:"",type:"pto",startDate:today(),endDate:today(),reason:""});
+  const today_=today();
+
+  // Training stats
+  const overdueTraining=trainingAssignments.filter(t=>t.status!=="completed"&&t.dueDate<today_);
+  const completedTraining=trainingAssignments.filter(t=>t.status==="completed");
+  // BG stats
+  const expiredBg=bgChecks.filter(b=>b.status==="expired");
+  const expiringBg=bgChecks.filter(b=>b.status==="expiring");
+  const pendingBg=bgChecks.filter(b=>b.status==="pending");
+  // PTO stats
+  const pendingPto=ptoRequests.filter(p=>p.status==="requested");
+
+  const assignTraining=()=>{
+    setTrainingAssignments(p=>[{id:"TA"+uid(),caregiverId:assignForm.caregiverId,moduleIdx:parseInt(assignForm.moduleIdx),assignedDate:today_,dueDate:assignForm.dueDate||toISO(addDays(now(),14)),status:"assigned",completedDate:"",certIssued:false},...p]);
+    if(notify)notify(assignForm.caregiverId,"training","New Training Assigned",`${TRAINING_MODULES[assignForm.moduleIdx]?.title} — due ${fmtD(assignForm.dueDate)}`,{});
+    setShowAssign(false);setAssignForm({caregiverId:"",moduleIdx:0,dueDate:""});
+  };
+  const markComplete=(ta)=>{
+    setTrainingAssignments(p=>p.map(t=>t.id===ta.id?{...t,status:"completed",completedDate:today_,certIssued:true}:t));
+  };
+  const issueCert=(ta)=>{
+    const cg=caregivers.find(c=>c.id===ta.caregiverId);
+    const mod=TRAINING_MODULES[ta.moduleIdx];
+    const certHtml=`<!doctype html><html><head><title>Certificate</title></head><body style="margin:0;font-family:Georgia,serif;">
+      <div style="max-width:800px;margin:40px auto;border:8px double #8a7356;padding:60px 50px;text-align:center;background:#fdfcf8;">
+        <div style="font-size:14px;letter-spacing:3px;color:#8a7356;text-transform:uppercase;">CWIN At Home LLC</div>
+        <div style="font-size:13px;color:#666;margin-top:4px;">Care When It's Needed</div>
+        <div style="font-size:34px;color:#070707;margin:36px 0 8px;font-weight:400;">Certificate of Completion</div>
+        <div style="width:60px;height:2px;background:#8a7356;margin:0 auto 28px;"></div>
+        <div style="font-size:14px;color:#666;">This certifies that</div>
+        <div style="font-size:28px;color:#070707;margin:12px 0;font-weight:600;">${cg?.name||"Caregiver"}</div>
+        <div style="font-size:14px;color:#666;">has successfully completed the training module</div>
+        <div style="font-size:22px;color:#3c4f3d;margin:12px 0 28px;font-style:italic;">${mod?.title||"Training Module"}</div>
+        <div style="display:flex;justify-content:space-between;margin-top:48px;padding:0 40px;">
+          <div style="text-align:center;"><div style="border-top:1px solid #070707;padding-top:6px;font-size:12px;color:#666;width:180px;">Date: ${fmtD(ta.completedDate||today_)}</div></div>
+          <div style="text-align:center;"><div style="border-top:1px solid #070707;padding-top:6px;font-size:12px;color:#666;width:180px;">CWIN At Home — Authorized</div></div>
+        </div>
+      </div><script>window.print&&setTimeout(()=>window.print(),300);</script></body></html>`;
+    let iframe=document.getElementById("cert-print-iframe");
+    if(!iframe){iframe=document.createElement("iframe");iframe.id="cert-print-iframe";iframe.style.cssText="position:fixed;top:0;left:0;width:100vw;height:100vh;border:none;background:#fff;z-index:99999";document.body.appendChild(iframe);}
+    else iframe.style.display="block";
+    const doc=iframe.contentDocument||iframe.contentWindow.document;doc.open();doc.write(certHtml);doc.close();
+    const cb=doc.createElement("button");cb.textContent="Close";cb.style.cssText="position:fixed;top:10px;right:10px;padding:8px 16px;background:#070707;color:#fff;border:none;cursor:pointer;z-index:100000";cb.onclick=()=>{iframe.style.display="none";};doc.body.appendChild(cb);
+  };
+  const requestBg=()=>{
+    setBgChecks(p=>[{id:"BG"+uid(),caregiverId:bgForm.caregiverId,type:bgForm.type,status:"pending",requestedDate:today_,completedDate:"",expiresDate:"",provider:bgForm.provider,notes:bgForm.notes},...p]);
+    setShowBg(false);setBgForm({caregiverId:"",type:"Criminal Background (IL)",provider:"Checkr",notes:""});
+  };
+  const submitPto=()=>{
+    setPtoRequests(p=>[{id:"PT"+uid(),caregiverId:ptoForm.caregiverId,type:ptoForm.type,startDate:ptoForm.startDate,endDate:ptoForm.endDate,status:"requested",reason:ptoForm.reason,requestedDate:today_},...p]);
+    setShowPto(false);setPtoForm({caregiverId:"",type:"pto",startDate:today(),endDate:today(),reason:""});
+  };
+
+  return <div>
+    <div className="hdr"><div><h2>Workforce HR</h2><div className="hdr-sub">Training assignments · background checks · PTO & availability</div></div></div>
+
+    <div className="sg">
+      <div className="sc er"><span className="sl">Overdue Training</span><span className="sv">{overdueTraining.length}</span><span className="ss">Past due date</span></div>
+      <div className="sc wn"><span className="sl">BG Checks Expiring</span><span className="sv">{expiringBg.length+expiredBg.length}</span><span className="ss">{expiredBg.length} expired</span></div>
+      <div className="sc bl"><span className="sl">Pending PTO</span><span className="sv">{pendingPto.length}</span><span className="ss">Awaiting approval</span></div>
+      <div className="sc ok"><span className="sl">Certs Issued</span><span className="sv">{completedTraining.filter(t=>t.certIssued).length}</span><span className="ss">Training completed</span></div>
+    </div>
+
+    <div className="tab-row">
+      <button className={`tab-btn ${tab==="training"?"act":""}`} onClick={()=>setTab("training")}>🎓 Training Assignments</button>
+      <button className={`tab-btn ${tab==="bg"?"act":""}`} onClick={()=>setTab("bg")}>🔍 Background Checks</button>
+      <button className={`tab-btn ${tab==="pto"?"act":""}`} onClick={()=>setTab("pto")}>🏖 PTO & Availability</button>
+    </div>
+
+    {/* ─── TRAINING ASSIGNMENTS ─── */}
+    {tab==="training"&&<div>
+      <div style={{display:"flex",justifyContent:"flex-end",marginBottom:12}}><button className="btn btn-p btn-sm" onClick={()=>{setAssignForm({caregiverId:caregivers[0]?.id||"",moduleIdx:0,dueDate:toISO(addDays(now(),14))});setShowAssign(true);}}>+ Assign Training</button></div>
+      {overdueTraining.length>0&&<div className="ai-card" style={{background:"linear-gradient(135deg,#3d0000,#1a0000)",marginBottom:14}}>
+        <h4><span className="pulse" style={{background:"var(--err)"}}/>⚠️ Overdue Training</h4>
+        <p>{overdueTraining.map(t=>`${caregivers.find(c=>c.id===t.caregiverId)?.name}: ${TRAINING_MODULES[t.moduleIdx]?.title} (due ${fmtD(t.dueDate)}). `).join("")}</p>
+      </div>}
+      <div className="card">
+        <div className="card-h"><h3>📋 Assigned Training</h3></div>
+        <div className="tw"><table style={{fontSize:12}}><thead><tr><th>Caregiver</th><th>Module</th><th>Assigned</th><th>Due</th><th>Status</th><th></th></tr></thead><tbody>
+          {trainingAssignments.slice().sort((a,b)=>(a.status==="completed"?1:0)-(b.status==="completed"?1:0)||a.dueDate.localeCompare(b.dueDate)).map(t=>{const cg=caregivers.find(c=>c.id===t.caregiverId);const mod=TRAINING_MODULES[t.moduleIdx];const overdue=t.status!=="completed"&&t.dueDate<today_;
+            return <tr key={t.id} style={{background:overdue?"#fef2f2":""}}>
+              <td style={{fontWeight:600}}>{cg?.name||"—"}</td><td>{mod?.title||"—"}</td><td>{fmtD(t.assignedDate)}</td>
+              <td style={{color:overdue?"var(--err)":"inherit",fontWeight:overdue?700:400}}>{fmtD(t.dueDate)}{overdue?" ⚠️":""}</td>
+              <td><span className={`tag ${t.status==="completed"?"tag-ok":t.status==="in_progress"?"tag-bl":overdue?"tag-er":"tag-wn"}`}>{t.status.replace("_"," ")}</span></td>
+              <td style={{display:"flex",gap:4}}>
+                {t.status!=="completed"&&<button className="btn btn-sm btn-ok" onClick={()=>markComplete(t)}>✓ Complete</button>}
+                {t.status==="completed"&&<button className="btn btn-sm btn-s" onClick={()=>issueCert(t)}>📜 Certificate</button>}
+              </td>
+            </tr>;
+          })}
+        </tbody></table></div>
+      </div>
+    </div>}
+
+    {/* ─── BACKGROUND CHECKS ─── */}
+    {tab==="bg"&&<div>
+      <div style={{display:"flex",justifyContent:"flex-end",marginBottom:12}}><button className="btn btn-p btn-sm" onClick={()=>{setBgForm({caregiverId:caregivers[0]?.id||"",type:"Criminal Background (IL)",provider:"Checkr",notes:""});setShowBg(true);}}>+ Request Background Check</button></div>
+      {(expiredBg.length>0||expiringBg.length>0)&&<div className="ai-card" style={{background:"linear-gradient(135deg,#3d2800,#1a1200)",marginBottom:14}}>
+        <h4><span className="pulse" style={{background:"var(--warn)"}}/>Background Check Alerts</h4>
+        <p>{expiredBg.map(b=>`🔴 ${caregivers.find(c=>c.id===b.caregiverId)?.name}: ${b.type} EXPIRED (${fmtD(b.expiresDate)}). `).join("")}{expiringBg.map(b=>`🟡 ${caregivers.find(c=>c.id===b.caregiverId)?.name}: ${b.type} expires ${fmtD(b.expiresDate)}. `).join("")}</p>
+      </div>}
+      <div className="card">
+        <div className="card-h"><h3>🔍 Background Check Records</h3></div>
+        <div className="tw"><table style={{fontSize:12}}><thead><tr><th>Caregiver</th><th>Type</th><th>Provider</th><th>Completed</th><th>Expires</th><th>Status</th><th></th></tr></thead><tbody>
+          {bgChecks.slice().sort((a,b)=>{const order={expired:0,expiring:1,pending:2,clear:3};return (order[a.status]??9)-(order[b.status]??9);}).map(b=>{const cg=caregivers.find(c=>c.id===b.caregiverId);
+            return <tr key={b.id} style={{background:b.status==="expired"?"#fef2f2":b.status==="expiring"?"#fffbeb":""}}>
+              <td style={{fontWeight:600}}>{cg?.name||"—"}</td><td>{b.type}</td><td>{b.provider}</td><td>{b.completedDate?fmtD(b.completedDate):"—"}</td><td>{b.expiresDate?fmtD(b.expiresDate):"—"}</td>
+              <td><span className={`tag ${b.status==="clear"?"tag-ok":b.status==="pending"?"tag-bl":b.status==="expiring"?"tag-wn":"tag-er"}`}>{b.status}</span></td>
+              <td>{b.status==="pending"&&<button className="btn btn-sm btn-ok" onClick={()=>setBgChecks(p=>p.map(x=>x.id===b.id?{...x,status:"clear",completedDate:today_,expiresDate:toISO(addDays(now(),730)),notes:"Clear — no records"}:x))}>Mark Clear</button>}
+                {(b.status==="expired"||b.status==="expiring")&&<button className="btn btn-sm btn-s" onClick={()=>setBgChecks(p=>[{id:"BG"+uid(),caregiverId:b.caregiverId,type:b.type,status:"pending",requestedDate:today_,completedDate:"",expiresDate:"",provider:b.provider,notes:"Renewal"},...p])}>🔄 Renew</button>}
+              </td>
+            </tr>;
+          })}
+        </tbody></table></div>
+        <div style={{padding:"10px 18px",fontSize:10,color:"var(--t2)",borderTop:"var(--border-thin)"}}>💡 Illinois home care requires criminal background checks via the Health Care Worker Registry, plus TB testing. Re-checks recommended every 2 years.</div>
+      </div>
+    </div>}
+
+    {/* ─── PTO & AVAILABILITY ─── */}
+    {tab==="pto"&&<div>
+      <div style={{display:"flex",justifyContent:"flex-end",marginBottom:12}}><button className="btn btn-p btn-sm" onClick={()=>{setPtoForm({caregiverId:caregivers[0]?.id||"",type:"pto",startDate:today(),endDate:today(),reason:""});setShowPto(true);}}>+ New Request</button></div>
+      {pendingPto.length>0&&<div className="ai-card" style={{marginBottom:14}}>
+        <h4><span className="pulse" style={{background:"var(--blue)"}}/>Pending Approval</h4>
+        <p>{pendingPto.map(p=>`${caregivers.find(c=>c.id===p.caregiverId)?.name}: ${p.type==="pto"?"PTO":p.type==="unavailable"?"Unavailable":"Preferred off"} ${fmtD(p.startDate)}${p.startDate!==p.endDate?"–"+fmtD(p.endDate):""}. `).join("")}</p>
+      </div>}
+      <div className="card">
+        <div className="card-h"><h3>🏖 Time Off & Availability Requests</h3></div>
+        <div className="tw"><table style={{fontSize:12}}><thead><tr><th>Caregiver</th><th>Type</th><th>Dates</th><th>Reason</th><th>Status</th><th></th></tr></thead><tbody>
+          {ptoRequests.slice().sort((a,b)=>(a.status==="requested"?0:1)-(b.status==="requested"?0:1)||a.startDate.localeCompare(b.startDate)).map(p=>{const cg=caregivers.find(c=>c.id===p.caregiverId);
+            return <tr key={p.id}>
+              <td style={{fontWeight:600}}>{cg?.name||"—"}</td>
+              <td><span className={`tag ${p.type==="pto"?"tag-bl":p.type==="unavailable"?"tag-wn":"tag-pu"}`}>{p.type==="pto"?"PTO":p.type==="unavailable"?"Unavailable":"Preferred off"}</span></td>
+              <td>{fmtD(p.startDate)}{p.startDate!==p.endDate?" – "+fmtD(p.endDate):""}</td>
+              <td style={{color:"var(--t2)"}}>{p.reason}</td>
+              <td><span className={`tag ${p.status==="approved"?"tag-ok":p.status==="denied"?"tag-er":"tag-wn"}`}>{p.status}</span></td>
+              <td style={{display:"flex",gap:4}}>
+                {p.status==="requested"&&<><button className="btn btn-sm btn-ok" onClick={()=>setPtoRequests(x=>x.map(r=>r.id===p.id?{...r,status:"approved"}:r))}>✓</button><button className="btn btn-sm btn-s" style={{color:"var(--err)"}} onClick={()=>setPtoRequests(x=>x.map(r=>r.id===p.id?{...r,status:"denied"}:r))}>✕</button></>}
+              </td>
+            </tr>;
+          })}
+        </tbody></table></div>
+      </div>
+      {/* Availability calendar — next 14 days */}
+      <div className="card" style={{marginTop:14}}>
+        <div className="card-h"><h3>📅 Team Availability — Next 14 Days</h3></div>
+        <div style={{overflowX:"auto"}}><table style={{fontSize:11,minWidth:600,borderCollapse:"collapse",width:"100%"}}><thead><tr><th style={{padding:"6px 8px",textAlign:"left",position:"sticky",left:0,background:"var(--card)"}}>Caregiver</th>
+          {Array.from({length:14}).map((_,i)=>{const d=addDays(now(),i);return <th key={i} style={{padding:"4px 6px",fontSize:9,textAlign:"center",color:"var(--t2)"}}>{d.toLocaleDateString("en-US",{weekday:"narrow"})}<br/>{d.getDate()}</th>;})}
+        </tr></thead><tbody>
+          {caregivers.filter(c=>c.status==="active").map(cg=>{
+            return <tr key={cg.id}><td style={{padding:"6px 8px",fontWeight:600,position:"sticky",left:0,background:"var(--card)"}}>{cg.name}</td>
+              {Array.from({length:14}).map((_,i)=>{const iso=toISO(addDays(now(),i));
+                const off=ptoRequests.find(p=>p.caregiverId===cg.id&&p.status==="approved"&&iso>=p.startDate&&iso<=p.endDate);
+                const working=(schedules||[]).some(s=>s.caregiverId===cg.id&&s.date===iso&&s.status==="published");
+                let bg="#f0fdf4",txt="",title="Available";
+                if(off){bg=off.type==="pto"?"#dbeafe":"#fef3c7";txt=off.type==="pto"?"PTO":"Off";title=off.reason;}
+                else if(working){bg="#3c4f3d";txt="●";title="Scheduled shift";}
+                return <td key={i} title={title} style={{padding:"4px 6px",textAlign:"center",background:bg,color:working&&!off?"#fff":"#070707",fontSize:9,fontWeight:600,border:"1px solid var(--bdr)"}}>{txt}</td>;
+              })}
+            </tr>;
+          })}
+        </tbody></table></div>
+        <div style={{display:"flex",gap:14,padding:"10px 18px",fontSize:10,color:"var(--t2)",flexWrap:"wrap"}}>
+          <span style={{display:"flex",alignItems:"center",gap:4}}><div style={{width:10,height:10,background:"#3c4f3d"}}/> Scheduled</span>
+          <span style={{display:"flex",alignItems:"center",gap:4}}><div style={{width:10,height:10,background:"#dbeafe",border:"1px solid #93c5fd"}}/> PTO</span>
+          <span style={{display:"flex",alignItems:"center",gap:4}}><div style={{width:10,height:10,background:"#fef3c7",border:"1px solid #fcd34d"}}/> Unavailable</span>
+          <span style={{display:"flex",alignItems:"center",gap:4}}><div style={{width:10,height:10,background:"#f0fdf4",border:"1px solid #86efac"}}/> Available</span>
+        </div>
+      </div>
+    </div>}
+
+    {/* Modals */}
+    {showAssign&&<div className="modal-bg" onClick={()=>setShowAssign(false)}><div className="modal" style={{maxWidth:460}} onClick={e=>e.stopPropagation()}>
+      <div className="modal-h">🎓 Assign Training<button className="btn btn-sm btn-s" onClick={()=>setShowAssign(false)}>✕</button></div>
+      <div className="modal-b">
+        <div className="fi" style={{marginBottom:10}}><label>Caregiver</label><select value={assignForm.caregiverId} onChange={e=>setAssignForm(p=>({...p,caregiverId:e.target.value}))}>{caregivers.filter(c=>c.status==="active").map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+        <div className="fi" style={{marginBottom:10}}><label>Module</label><select value={assignForm.moduleIdx} onChange={e=>setAssignForm(p=>({...p,moduleIdx:e.target.value}))}>{TRAINING_MODULES.map((m,i)=><option key={i} value={i}>{m.title}</option>)}</select></div>
+        <div className="fi" style={{marginBottom:14}}><label>Due Date</label><input type="date" value={assignForm.dueDate} onChange={e=>setAssignForm(p=>({...p,dueDate:e.target.value}))}/></div>
+        <button className="btn btn-p" style={{width:"100%"}} disabled={!assignForm.caregiverId} onClick={assignTraining}>Assign</button>
+      </div>
+    </div></div>}
+
+    {showBg&&<div className="modal-bg" onClick={()=>setShowBg(false)}><div className="modal" style={{maxWidth:460}} onClick={e=>e.stopPropagation()}>
+      <div className="modal-h">🔍 Request Background Check<button className="btn btn-sm btn-s" onClick={()=>setShowBg(false)}>✕</button></div>
+      <div className="modal-b">
+        <div className="fi" style={{marginBottom:10}}><label>Caregiver</label><select value={bgForm.caregiverId} onChange={e=>setBgForm(p=>({...p,caregiverId:e.target.value}))}>{caregivers.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+        <div className="fi" style={{marginBottom:10}}><label>Check Type</label><select value={bgForm.type} onChange={e=>setBgForm(p=>({...p,type:e.target.value}))}><option>Criminal Background (IL)</option><option>IL Health Care Worker Registry</option><option>TB Test</option><option>Driving Record (MVR)</option><option>Drug Screen</option><option>Reference Check</option></select></div>
+        <div className="fi" style={{marginBottom:10}}><label>Provider</label><select value={bgForm.provider} onChange={e=>setBgForm(p=>({...p,provider:e.target.value}))}><option>Checkr</option><option>IDPH</option><option>Quest Diagnostics</option><option>Sterling</option><option>Other</option></select></div>
+        <div className="fi" style={{marginBottom:14}}><label>Notes</label><input value={bgForm.notes} onChange={e=>setBgForm(p=>({...p,notes:e.target.value}))}/></div>
+        <button className="btn btn-p" style={{width:"100%"}} disabled={!bgForm.caregiverId} onClick={requestBg}>Request Check</button>
+      </div>
+    </div></div>}
+
+    {showPto&&<div className="modal-bg" onClick={()=>setShowPto(false)}><div className="modal" style={{maxWidth:460}} onClick={e=>e.stopPropagation()}>
+      <div className="modal-h">🏖 Time Off / Availability Request<button className="btn btn-sm btn-s" onClick={()=>setShowPto(false)}>✕</button></div>
+      <div className="modal-b">
+        <div className="fi" style={{marginBottom:10}}><label>Caregiver</label><select value={ptoForm.caregiverId} onChange={e=>setPtoForm(p=>({...p,caregiverId:e.target.value}))}>{caregivers.filter(c=>c.status==="active").map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+        <div className="fi" style={{marginBottom:10}}><label>Type</label><select value={ptoForm.type} onChange={e=>setPtoForm(p=>({...p,type:e.target.value}))}><option value="pto">Paid Time Off</option><option value="unavailable">Unavailable</option><option value="preferred_off">Preferred Day Off</option></select></div>
+        <div className="fg" style={{marginBottom:10}}>
+          <div className="fi"><label>Start</label><input type="date" value={ptoForm.startDate} onChange={e=>setPtoForm(p=>({...p,startDate:e.target.value}))}/></div>
+          <div className="fi"><label>End</label><input type="date" value={ptoForm.endDate} onChange={e=>setPtoForm(p=>({...p,endDate:e.target.value}))}/></div>
+        </div>
+        <div className="fi" style={{marginBottom:14}}><label>Reason</label><input value={ptoForm.reason} onChange={e=>setPtoForm(p=>({...p,reason:e.target.value}))} placeholder="e.g. Family vacation"/></div>
+        <button className="btn btn-p" style={{width:"100%"}} disabled={!ptoForm.caregiverId} onClick={submitPto}>Submit Request</button>
+      </div>
+    </div></div>}
   </div>;
 }
 
@@ -8485,7 +9305,29 @@ function BillingPage({invoices,setInvoices,clients,caregivers,rateCards,billingP
 
   return <div>
     <div className="hdr"><div><h2>Billing & Invoices</h2><div className="hdr-sub">Generate and manage client invoices</div></div>
-      <button className="btn btn-p btn-sm" onClick={()=>setShowGen(true)}>+ Generate Invoice</button>
+      <div style={{display:"flex",gap:6}}>
+        <button className="btn btn-s btn-sm" onClick={()=>{
+          // Recurring: generate a draft invoice for every active client for the latest period
+          const period=billingPeriods[0];if(!period){alert("No billing period found.");return;}
+          const activeClients=clients.filter(c=>c.status==="active");
+          let made=0;
+          activeClients.forEach(cl=>{
+            // Skip if invoice already exists for this client+period
+            if(invoices.some(i=>i.clientId===cl.id&&i.periodId===period.id))return;
+            generateInvoice(cl.id,period.id);made++;
+          });
+          setTimeout(()=>alert(made>0?`✅ Generated ${made} draft invoice${made>1?"s":""} for ${period.label}.\n\nReview and send each from the list below.`:`All active clients already have an invoice for ${period.label}.`),200);
+        }}>🔁 Auto-Generate All (Recurring)</button>
+        <button className="btn btn-p btn-sm" onClick={()=>setShowGen(true)}>+ Generate Invoice</button>
+      </div>
+    </div>
+
+    {/* Recurring billing info */}
+    <div className="ai-card" style={{marginBottom:14,background:"linear-gradient(135deg,#f0fdf4,#dcfce7)",border:"1px solid #86efac"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}}>
+        <div><h4 style={{color:"#166534",margin:0}}>🔁 Recurring Billing</h4><p style={{color:"#14532d",fontSize:12,margin:"4px 0 0"}}>Auto-generate biweekly invoices for all active clients in one click. Each is created as a draft you review before sending. Online payment links (Zelle / Stripe) are embedded in every invoice.</p></div>
+        <div style={{textAlign:"right",fontSize:11,color:"#166534"}}><div><strong>{clients.filter(c=>c.status==="active").length}</strong> active clients</div><div>Next period: <strong>{billingPeriods[0]?.label||"—"}</strong></div></div>
+      </div>
     </div>
 
     <div className="sg">
@@ -8659,6 +9501,20 @@ function BillingPage({invoices,setInvoices,clients,caregivers,rateCards,billingP
               <div><strong>Terms:</strong> Balance Due Biweekly</div>
               <div><strong>Late Fee:</strong> $30.00 if received 7 days after Invoice date.</div>
             </div>
+            {/* ONLINE PAYMENT OPTIONS */}
+            {(()=>{const amt=((sel.subtotal||0)+(sel.expenses||0)+lateFee+prevBalance-(sel.creditTotal||0)).toFixed(2);
+              const memo=encodeURIComponent(`CWIN Invoice ${sel.id} — ${cl?.name||""}`);
+              return <div style={{padding:"12px 14px",background:"linear-gradient(135deg,#f0fdf4,#dcfce7)",border:"1px solid #86efac",marginBottom:14}}>
+                <div style={{fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:.5,color:"#166534",marginBottom:8}}>💳 Pay This Invoice Online — ${amt}</div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:6}}>
+                  <a className="btn btn-sm btn-s" href={`https://enroll.zellepay.com/`} target="_blank" rel="noopener noreferrer" style={{justifyContent:"center",textDecoration:"none"}}>⚡ Pay with Zelle</a>
+                  <a className="btn btn-sm btn-s" href={`https://venmo.com/?txn=pay&note=${memo}&amount=${amt}`} target="_blank" rel="noopener noreferrer" style={{justifyContent:"center",textDecoration:"none"}}>💙 Venmo</a>
+                  <a className="btn btn-sm btn-s" href={`https://www.paypal.com/paypalme/cwinathome/${amt}`} target="_blank" rel="noopener noreferrer" style={{justifyContent:"center",textDecoration:"none"}}>🅿️ PayPal</a>
+                  <a className="btn btn-sm btn-s" href={`https://checkout.stripe.com/`} target="_blank" rel="noopener noreferrer" style={{justifyContent:"center",textDecoration:"none"}}>💳 Card (Stripe)</a>
+                </div>
+                <div style={{fontSize:9,color:"#166534",marginTop:6,opacity:.8}}>Zelle to CWINathome@gmail.com is preferred (no processing fee). In production, Stripe link is generated per-invoice with the exact amount pre-filled.</div>
+              </div>;
+            })()}
             <div style={{border:"2px solid #070707",padding:10,fontSize:11}}>
               <div style={{fontWeight:700,fontSize:10,textTransform:"uppercase",letterSpacing:1,marginBottom:6,background:"#070707",color:"#fff",padding:"3px 8px",display:"inline-block"}}>REMITTANCE</div>
               <table style={{width:"100%",borderCollapse:"collapse"}}><tbody>
@@ -8745,7 +9601,33 @@ function PayrollPage({paySlips,setPaySlips,caregivers,clients,payCards,billingPe
 
   return <div>
     <div className="hdr"><div><h2>Payroll & Pay Slips</h2><div className="hdr-sub">Generate caregiver pay slips from completed shifts</div></div>
-      <button className="btn btn-p btn-sm" onClick={()=>setShowGen(true)}>+ Generate Pay Slip</button>
+      <div style={{display:"flex",gap:6}}>
+        <button className="btn btn-s btn-sm" onClick={()=>{
+          // Export Gusto/ADP-style payroll CSV
+          const rows=[["Employee ID","Employee Name","Type","Period","Pay Date","Reg Hours","OT Hours","Reg Pay","OT Pay","Reimbursements","Bonuses","Gross Pay","Status"]];
+          paySlips.forEach(ps=>{const cg=caregivers.find(c=>c.id===ps.caregiverId);const period=billingPeriods.find(b=>b.id===ps.periodId);
+            rows.push([ps.caregiverId,cg?.name||"",ps.type||"employee",period?.label||"",period?.payDate||ps.date,(ps.regHours||0).toFixed(2),(ps.otHours||0).toFixed(2),(ps.regPay||0).toFixed(2),(ps.otPay||0).toFixed(2),((ps.expenses||0)+(ps.mileage||0)).toFixed(2),(ps.bonusTotal||0).toFixed(2),(ps.grossPay||0).toFixed(2),ps.status]);
+          });
+          const csv=rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
+          const blob=new Blob([csv],{type:"text/csv"});const url=URL.createObjectURL(blob);
+          const a=document.createElement("a");a.href=url;a.download=`cwin-payroll-export-${today()}.csv`;a.click();
+          setTimeout(()=>URL.revokeObjectURL(url),100);
+        }}>📥 Export Payroll CSV (Gusto/ADP)</button>
+        <button className="btn btn-s btn-sm" onClick={()=>{
+          // Direct deposit ACH file (NACHA-style summary CSV)
+          const rows=[["Employee Name","Routing (last 4)","Account (last 4)","Amount","Pay Date","Memo"]];
+          paySlips.filter(p=>p.status==="draft"||p.status==="approved").forEach(ps=>{const cg=caregivers.find(c=>c.id===ps.caregiverId);const period=billingPeriods.find(b=>b.id===ps.periodId);
+            rows.push([cg?.name||"","****1234","****5678",(ps.grossPay||0).toFixed(2),period?.payDate||ps.date,`CWIN Pay ${ps.id}`]);
+          });
+          if(rows.length===1){alert("No draft/approved pay slips to include in direct deposit batch.");return;}
+          const csv=rows.map(r=>r.map(c=>`"${c}"`).join(",")).join("\n");
+          const blob=new Blob([csv],{type:"text/csv"});const url=URL.createObjectURL(blob);
+          const a=document.createElement("a");a.href=url;a.download=`cwin-direct-deposit-${today()}.csv`;a.click();
+          setTimeout(()=>URL.revokeObjectURL(url),100);
+          alert("Direct deposit batch file downloaded.\n\nIn production, this generates a NACHA ACH file submitted to your bank or processed via Gusto/ADP. Bank details are masked here for demo.");
+        }}>🏦 Direct Deposit Batch</button>
+        <button className="btn btn-p btn-sm" onClick={()=>setShowGen(true)}>+ Generate Pay Slip</button>
+      </div>
     </div>
 
     <div className="sg">
@@ -9124,7 +10006,7 @@ function AIHub({clients,caregivers,careNotes,incidents,expenses,schedules,rateCa
   ];
 
   return <div>
-    <div className="hdr"><div><h2>AI Command Center</h2><div className="hdr-sub">15 AI agents powering your operations</div></div></div>
+    <div className="hdr"><div><h2>AI Command Center</h2><div className="hdr-sub">16 AI agents powering your operations</div></div></div>
     <div className="tab-row">{tabs.map(t=> <button key={t.key} className={`tab-btn ${tab===t.key?"act":""}`} onClick={()=>setTab(t.key)}>{t.label}</button>)}</div>
 
     {/* ═══ OVERVIEW ═══ */}
@@ -9215,6 +10097,40 @@ function AIHub({clients,caregivers,careNotes,incidents,expenses,schedules,rateCa
         <div className="sc bl"><span className="sl">Projected Margin</span><span className="sv">{$(projMargin)}</span><span className="ss">{projRevenue>0?((projMargin/projRevenue)*100).toFixed(0):0}%</span></div>
         <div className="sc wn"><span className="sl">OT Risks</span><span className="sv">{schedConflicts.length}</span></div>
       </div>
+
+      {/* 90-DAY CASHFLOW PROJECTION */}
+      {(()=>{
+        // Weekly run-rate from published shifts
+        const weeklyHrsByClient={};
+        monthScheds.forEach(s=>{const hrs=(timeToMin(s.endTime)-timeToMin(s.startTime))/60;weeklyHrsByClient[s.clientId]=(weeklyHrsByClient[s.clientId]||0)+hrs;});
+        // Assume current published shifts represent ~1 week; project 13 weeks (90 days)
+        const weeklyRev=Object.entries(weeklyHrsByClient).reduce((sum,[cid,hrs])=>{const rc=rateCards?.find(r=>r.clientId===cid);return sum+hrs*(rc?.billRate||35);},0);
+        const weeklyPay=monthScheds.reduce((s,sh)=>{const pc=payCards?.find(p=>p.caregiverId===sh.caregiverId);return s+(timeToMin(sh.endTime)-timeToMin(sh.startTime))/60*(pc?.payRate||20);},0);
+        // Expected callout/no-show drag: assume ~6% revenue loss
+        const calloutDrag=0.06;
+        const months=[{name:"Month 1 (next 30 days)",weeks:4.3},{name:"Month 2 (31-60 days)",weeks:4.3},{name:"Month 3 (61-90 days)",weeks:4.3}];
+        let cumulative=0;
+        return <div className="card" style={{marginBottom:14}}>
+          <div className="card-h"><h3>📈 90-Day Cashflow Projection</h3><span style={{fontSize:11,color:"var(--t2)"}}>Based on current weekly run-rate</span></div>
+          <div className="tw"><table><thead><tr><th>Period</th><th style={{textAlign:"right"}}>Gross Revenue</th><th style={{textAlign:"right"}}>Less Callouts (~6%)</th><th style={{textAlign:"right"}}>Payroll</th><th style={{textAlign:"right"}}>Net Margin</th><th style={{textAlign:"right"}}>Cumulative</th></tr></thead><tbody>
+            {months.map((m,i)=>{
+              const gross=weeklyRev*m.weeks;
+              const adjusted=gross*(1-calloutDrag);
+              const pay=weeklyPay*m.weeks;
+              const margin=adjusted-pay;
+              cumulative+=margin;
+              return <tr key={i}><td style={{fontWeight:600}}>{m.name}</td><td style={{textAlign:"right"}}>{$(gross)}</td><td style={{textAlign:"right",color:"var(--err)"}}>−{$(gross*calloutDrag)}</td><td style={{textAlign:"right"}}>{$(pay)}</td><td style={{textAlign:"right",fontWeight:700,color:"#3c4f3d"}}>{$(margin)}</td><td style={{textAlign:"right",fontWeight:700}}>{$(cumulative)}</td></tr>;
+            })}
+            <tr style={{background:"#f0f0f0",fontWeight:700}}><td>90-Day Total</td><td style={{textAlign:"right"}}>{$(weeklyRev*12.9)}</td><td style={{textAlign:"right",color:"var(--err)"}}>−{$(weeklyRev*12.9*calloutDrag)}</td><td style={{textAlign:"right"}}>{$(weeklyPay*12.9)}</td><td style={{textAlign:"right",color:"#3c4f3d"}}>{$(cumulative)}</td><td style={{textAlign:"right"}}>{$(cumulative)}</td></tr>
+          </tbody></table></div>
+          <div style={{padding:"10px 18px",fontSize:11,color:"var(--t2)",borderTop:"var(--border-thin)"}}>💡 Projection assumes current published-shift volume continues weekly, with ~6% drag for callouts/no-shows. Add more clients or hours to grow the forecast.</div>
+          <div style={{padding:"0 18px 14px"}}>
+            <button className="btn btn-p" onClick={()=>{callAI(`You are a CFO advisor for CWIN At Home, a home care agency in Tinley Park IL with a fixed 20% admin margin model. Based on this 90-day cashflow projection, give strategic financial advice (max 250 words):\n\nWeekly revenue run-rate: ${$(weeklyRev)}\nWeekly payroll: ${$(weeklyPay)}\n90-day projected net margin: ${$(cumulative)}\nActive clients: ${clients.filter(c=>c.status==="active").length}\nActive caregivers: ${caregivers.filter(c=>c.status==="active").length}\nOpen leads in pipeline: ${(clientLeads||[]).filter(l=>l.status!=="active"&&l.status!=="declined").length}\n\nProvide:\n1) Cashflow health assessment\n2) Break-even analysis (how many client-hours to cover fixed costs)\n3) Growth recommendations to improve the 90-day outlook\n4) Risks to watch (concentration, callout drag, OT)\nBe specific with the numbers given.`);}} disabled={apiLoading}>{apiLoading?"Analyzing...":"✨ Get AI Cashflow Advisory"}</button>
+          </div>
+          {apiResult&&<div style={{margin:"0 18px 18px",padding:"14px 18px",background:"var(--bg)",whiteSpace:"pre-wrap",fontSize:12,lineHeight:1.7}}>{apiResult}</div>}
+        </div>;
+      })()}
+
       <div className="card"><div className="card-h"><h3>Revenue by client</h3></div><div className="tw"><table><thead><tr><th>Client</th><th>Rate</th><th>Scheduled Hrs</th><th style={{textAlign:"right"}}>Projected Rev</th><th style={{textAlign:"right"}}>Projected Cost</th><th style={{textAlign:"right"}}>Margin</th></tr></thead><tbody>
         {clients.filter(c=>c.status==="active").map(cl=>{const rc=rateCards?.find(r=>r.clientId===cl.id);const hrs=monthScheds.filter(s=>s.clientId===cl.id).reduce((s,sh)=>s+(timeToMin(sh.endTime)-timeToMin(sh.startTime))/60,0);const rev=hrs*(rc?.billRate||35);const cost=monthScheds.filter(s=>s.clientId===cl.id).reduce((s,sh)=>{const pc=payCards?.find(p=>p.caregiverId===sh.caregiverId);return s+(timeToMin(sh.endTime)-timeToMin(sh.startTime))/60*(pc?.payRate||20);},0);return <tr key={cl.id}><td style={{fontWeight:600}}>{cl.name}</td><td>${rc?.billRate||35}/hr</td><td>{hrs.toFixed(0)}h</td><td style={{textAlign:"right"}}>{$(rev)}</td><td style={{textAlign:"right"}}>{$(cost)}</td><td style={{textAlign:"right",fontWeight:700,color:"#3c4f3d"}}>{$(rev-cost)}</td></tr>;})}
       </tbody></table></div></div>
