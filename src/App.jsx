@@ -203,6 +203,32 @@ async function sbSaveCaregiversBulk(cgArr){
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+// TASK / CHORE PERSISTENCE (Supabase REST) — whole chore record as JSONB
+// Table: chores_store (id text primary key, data jsonb, updated_at)
+// Includes task details, comments, photo completions, and approval status.
+// ═══════════════════════════════════════════════════════════════════════
+async function sbLoadChores(){
+  try{
+    const resp=await fetch(SB_URL+"/rest/v1/chores_store?select=id,data&order=id",{headers:sbHeaders});
+    if(!resp.ok)return null;
+    const rows=await resp.json();
+    if(!Array.isArray(rows)||rows.length===0)return null;
+    return rows.map(r=>({...(r.data||{}),id:r.id}));
+  }catch(e){console.error("Chore load failed:",e);return null;}
+}
+async function sbSaveChoresBulk(arr){
+  try{
+    const body=arr.map(c=>({id:c.id,data:c,updated_at:new Date().toISOString()}));
+    const resp=await fetch(SB_URL+"/rest/v1/chores_store?on_conflict=id",{
+      method:"POST",
+      headers:{...sbHeaders,"Content-Type":"application/json","Prefer":"resolution=merge-duplicates,return=minimal"},
+      body:JSON.stringify(body)
+    });
+    return resp.ok;
+  }catch(e){console.error("Chore bulk save failed:",e);return false;}
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 // STATUS DEFINITIONS — Every status used across the platform
 // ═══════════════════════════════════════════════════════════════════════
 const STATUS_DEFS={
@@ -984,7 +1010,7 @@ const today=()=>now().toISOString().split("T")[0];
 // ─── SEED: CLIENTS ──────────────────────────────────────────────────
 const CLIENTS=[
   {id:"CL1",name:"Becky Sutton",age:78,addr:"30 E Elm St, Chicago IL 60611",phone:"312-555-0101",emergency:"Tom Sutton (son) 312-555-0102",
-   dx:["Mild cognitive impairment","Hypertension","Osteoarthritis"],meds:["Lisinopril 10mg","Donepezil 5mg","Acetaminophen PRN"],
+   dx:["Mild cognitive impairment","Hypertension","Osteoarthritis"],meds:[{name:"Lisinopril",dose:"10mg",frequency:"Once daily",time:"08:00",reason:"Hypertension (blood pressure)",photo:null},{name:"Donepezil",dose:"5mg",frequency:"Once daily",time:"08:00",reason:"Memory / cognitive support",photo:null},{name:"Acetaminophen",dose:"500mg",frequency:"As needed (PRN)",time:"PRN",reason:"Arthritis pain",photo:null}],
    adl:{bathing:"Standby assist — caregiver present for safety, verbal cues only",dressing:"Independent — selects clothes and dresses without assistance",eating:"Independent — feeds self without assistance",toileting:"Independent — uses toilet without assistance, manages clothing",mobility:"Independent with device — uses cane independently",transferring:"Independent — moves in/out of bed, chair, toilet without help",continence:"Continent — full bowel and bladder control",cognition:"Intact — alert, oriented x4 (person, place, time, situation)"},
    social:{interests:["Bridge club","Classical music","Gardening","Reading mystery novels"],faith:"Episcopal",pets:"Cat named Whiskers",birthday:"1947-08-14"},
    preferences:{wakeTime:"7:30 AM",bedTime:"9:00 PM",tea:"Earl Grey with honey",diet:"Low sodium",tvShows:["Jeopardy","PBS NewsHour"]},
@@ -992,7 +1018,7 @@ const CLIENTS=[
    geo:{lat:41.9026,lng:-87.6280,radius:150},
    status:"active",riskLevel:"low",billRate:50,photo:null},
   {id:"CL2",name:"Linda Frank",age:84,addr:"3930 N Pine Grove Ave, Chicago IL 60613",phone:"773-555-0201",emergency:"Mike Frank (nephew) 773-555-0202",
-   dx:["CHF (NYHA Class II)","Type 2 Diabetes","Chronic back pain","Depression"],meds:["Metformin 500mg","Furosemide 20mg","Sertraline 50mg","Carvedilol 12.5mg","Gabapentin 300mg"],
+   dx:["CHF (NYHA Class II)","Type 2 Diabetes","Chronic back pain","Depression"],meds:[{name:"Metformin",dose:"500mg",frequency:"Twice daily",time:"08:00, 18:00",reason:"Type 2 diabetes",photo:null},{name:"Furosemide",dose:"20mg",frequency:"Once daily",time:"08:00",reason:"CHF fluid management",photo:null},{name:"Sertraline",dose:"50mg",frequency:"Once daily",time:"08:00",reason:"Depression",photo:null},{name:"Carvedilol",dose:"12.5mg",frequency:"Twice daily",time:"08:00, 18:00",reason:"Heart failure",photo:null},{name:"Gabapentin",dose:"300mg",frequency:"Three times daily",time:"08:00, 14:00, 20:00",reason:"Chronic back pain",photo:null}],
    adl:{bathing:"Moderate assist (50%) — needs hands-on help with washing upper or lower body",dressing:"Minimal assist (25%) — needs help with buttons, zippers, or back closures",eating:"Independent with setup — needs meal cut, containers opened, tray positioned",toileting:"Standby assist — needs someone nearby for transfers or balance",mobility:"Fall risk — ambulatory but history of falls, requires precautions",transferring:"Minimal assist (25%) — needs steadying or light support during pivot",continence:"Managed with scheduled toileting — continent when prompted",cognition:"Moderate impairment — needs reminders for daily tasks, supervision recommended"},
    social:{interests:["Watching old movies","Phone calls with friends","Crossword puzzles","Dog care"],faith:"Catholic",pets:"Dog named Buddy",birthday:"1941-11-22"},
    preferences:{wakeTime:"8:00 AM",bedTime:"10:00 PM",tea:"Chamomile",diet:"Diabetic, cardiac",tvShows:["TCM classics","The Price is Right"]},
@@ -1000,7 +1026,7 @@ const CLIENTS=[
    geo:{lat:41.9521,lng:-87.6451,radius:150},
    status:"active",riskLevel:"medium",billRate:35,photo:null},
   {id:"CL3",name:"Steven Brown",age:72,addr:"4920 N Marine Dr, Chicago IL 60640",phone:"773-555-0301",emergency:"Janet Brown (wife) 773-555-0302",
-   dx:["Parkinson's disease (Stage 2)","Mild depression","Benign prostatic hyperplasia"],meds:["Carbidopa-Levodopa 25/100","Tamsulosin 0.4mg","Escitalopram 10mg"],
+   dx:["Parkinson's disease (Stage 2)","Mild depression","Benign prostatic hyperplasia"],meds:[{name:"Carbidopa-Levodopa",dose:"25/100",frequency:"Three times daily",time:"08:00, 12:00, 18:00",reason:"Parkinson's — timing is critical",photo:null},{name:"Tamsulosin",dose:"0.4mg",frequency:"Once daily",time:"20:00",reason:"Enlarged prostate (BPH)",photo:null},{name:"Escitalopram",dose:"10mg",frequency:"Once daily",time:"08:00",reason:"Depression",photo:null}],
    adl:{bathing:"Minimal assist (25%) — can do most of task, needs help with one body part (e.g. back, feet)",dressing:"Minimal assist due to tremor — fine motor difficulty with fasteners",eating:"Independent with adaptive equipment — uses built-up utensils, plate guard, etc.",toileting:"Independent with equipment — uses raised seat, grab bars, or commode",mobility:"Slow gait, balance issues — ambulatory with gait abnormality",transferring:"Standby assist — caregiver within arm's reach, no contact unless needed",continence:"Occasionally incontinent — accidents less than weekly",cognition:"Mild cognitive impairment (MCI) — diagnosed, memory lapses, judgment intact"},
    social:{interests:["Jazz music","Chess","Watching Cubs games","Reading history books"],faith:"Baptist",pets:"None",birthday:"1953-05-30"},
    preferences:{wakeTime:"7:00 AM",bedTime:"9:30 PM",tea:"Black coffee, 1 sugar",diet:"Regular",tvShows:["Cubs games","60 Minutes","History Channel"]},
@@ -1019,6 +1045,20 @@ function clientGeo(clientOrId,clients){
   }
   return null; // no coordinates set yet
 }
+
+// ─── MEDICATION MODEL (single source of truth) ─────────────────────
+// Meds are stored as objects {name,dose,frequency,time,reason,photo}.
+// Older data stored meds as plain strings — normalizeMed upgrades them on read,
+// parsing a trailing dose out of strings like "Lisinopril 10mg".
+function normalizeMed(m){
+  if(m&&typeof m==="object")return {name:m.name||"",dose:m.dose||"",frequency:m.frequency||"",time:m.time||"",reason:m.reason||"",photo:m.photo||null};
+  const s=String(m||"").trim();
+  // Split a trailing dose (number + unit) off the name if present
+  const match=s.match(/^(.*?)[\s,]+(\d+(?:\.\d+)?\s?(?:mg|mcg|ml|g|units?|iu|%|tablets?|caps?)(?:\s?\w+)?)\s*$/i);
+  if(match)return {name:match[1].trim(),dose:match[2].trim(),frequency:"",time:"",reason:"",photo:null};
+  return {name:s,dose:"",frequency:"",time:"",reason:"",photo:null};
+}
+const PILL_PHOTO_DISCLAIMER="Pill images are a visual aid only and may change based on the pharmacy or manufacturer. Always verify medication by the label, not appearance.";
 
 // ─── SEED: CAREGIVERS ───────────────────────────────────────────────
 const CAREGIVERS=[
@@ -1280,17 +1320,42 @@ const TRAINING_MODULES=[
     {title:"Lower Body ROM — Hip, Knee, Ankle",content:"HIP: 1) Flexion/Extension — Lift straight leg up keeping knee straight, return down. 2) Abduction/Adduction — Move leg outward away from midline, then back. 3) Internal/External rotation — With leg straight, rotate foot inward and outward. SUPPORT: One hand under knee, other under ankle. KNEE: 1) Flexion/Extension — Bend knee bringing heel toward buttocks, then straighten. Often combined with hip flexion. SUPPORT: One hand under knee, other under ankle. ANKLE: 1) Dorsiflexion/Plantarflexion — Pull foot up toward client's head (toes up), then point toes down. 2) Inversion/Eversion — Turn sole of foot inward, then outward. 3) Circumduction — Rotate foot in circles. TOES: Flex and extend each toe. Spread toes apart."},
     {title:"Documentation & Reporting",content:"DOCUMENT AFTER EVERY ROM SESSION: Date and time. Joints exercised. Number of repetitions. How client tolerated (well, with pain, refused). Any limitations noticed (e.g., 'left shoulder limited to 90° flexion, reports pain'). Skin condition observed. Any new redness, swelling, or warmth. REPORT TO NURSE IMMEDIATELY: New pain or increased pain during ROM. New limitation in joint movement (couldn't move as far as before). Joint feels hot, swollen, or red. Client refuses ROM and seems distressed. You hear or feel grinding/popping in the joint. Client falls or is injured. CONTRAINDICATIONS — DO NOT perform ROM if: Joint is dislocated, fractured, or recently surgery. There is severe pain. Client is medically unstable. Care plan prohibits."}
   ],quiz:[{q:"How often should bed-bound clients receive ROM exercises?",opts:["Once per week","As specified in their care plan, usually 1-2 times daily","Only when family asks","Once per month"],a:1},{q:"During ROM, you should:",opts:["Force the joint past its limit to improve flexibility","Move slowly and stop if there is pain or resistance","Move as fast as possible to save time","Skip joints if the client doesn't complain"],a:1},{q:"Passive Range of Motion (PROM) means:",opts:["The client moves their own joints","The caregiver moves the joints while the client is relaxed","No movement is needed","Only physical therapists can do it"],a:1},{q:"You notice a client's knee feels hot and swollen during ROM. You should:",opts:["Continue the exercises","Stop and notify the nurse immediately","Apply ice and continue","Document and check tomorrow"],a:1}],status:"published"},
+  {id:"TM19",title:"Foley Catheter Care",category:"Clinical",duration:"60 min",difficulty:"Advanced",description:"Care and maintenance of indwelling Foley (urethral) catheters: securing, drainage bag management, perineal/meatal cleaning, infection prevention, and recognizing problems to escalate.",lessons:[
+    {title:"What is a Foley Catheter",content:"A Foley catheter is a thin, flexible tube inserted through the urethra into the bladder to drain urine continuously. A small balloon near the tip is inflated with sterile water to hold it in place. It connects to a drainage bag. As a home care aide, you do NOT insert, remove, or irrigate the catheter — that is a licensed nurse's role. Your job is hygiene, securement, drainage bag management, monitoring output, and reporting problems. Clients may have a Foley for urinary retention, after surgery, for wound healing near the perineum, or for comfort in end-of-life care."},
+    {title:"Daily Catheter & Perineal Care",content:"Wash your hands and put on gloves. Provide privacy. Clean the perineal area daily and after every bowel movement with mild soap and warm water. Clean the catheter tube where it meets the body: hold the catheter gently at the insertion site to avoid tugging, and wipe from the insertion point OUTWARD along the tube about 4 inches, using a fresh section of cloth for each wipe. For women, clean front to back. For men, clean from the tip of the penis outward and retract foreskin if uncircumcised, then replace it. Never use powder or lotion near the insertion site. Pat dry. Do not disconnect the catheter from the bag for cleaning."},
+    {title:"Drainage Bag Management",content:"Keep the drainage bag BELOW the level of the bladder at all times — never raise it above the hips, or urine can flow back and cause infection. Never let the bag touch the floor. Secure the catheter tubing to the client's thigh with a leg strap or securement device to prevent pulling and tension on the bladder. Keep tubing free of kinks and loops so urine flows freely. Empty the bag when it is about half to two-thirds full, and at the end of each shift: open the spout at the bottom, drain into a clean container without letting the spout touch anything, measure and record the amount, close the spout, and wipe it with an alcohol pad. Leg bags (smaller, worn during the day) are switched to a larger overnight bag at bedtime — only a nurse or trained client should disconnect; if unsure, ask."},
+    {title:"Infection Prevention & Monitoring",content:"Catheter-associated urinary tract infections (CAUTIs) are the main risk. Prevent them by: keeping the system closed (don't disconnect unnecessarily), hand hygiene before and after any contact, keeping the bag below the bladder, and daily hygiene. Encourage fluids if allowed by the care plan. Monitor and RECORD urine output, color, and clarity each shift. Normal urine is pale yellow and clear. Report promptly: cloudy, foul-smelling, or bloody urine; little or no output over several hours; urine leaking around the catheter; fever, chills, or new confusion; pain or burning at the site; the catheter falling out (never try to reinsert)."},
+    {title:"When to Escalate",content:"Call the nurse or supervisor immediately if: no urine has drained in 4+ hours (possible blockage — a medical concern), the catheter is dislodged or pulled out, you see bright red blood or clots, the client has fever/chills/shaking, there is severe pain, or urine is leaking heavily around the catheter. Document every catheter care task: time, hygiene performed, urine amount/color/clarity, bag emptied, and any concerns reported. Always work within your scope — hygiene and monitoring yes; insertion, removal, and irrigation are nursing tasks."}
+  ],quiz:[{q:"Where must the drainage bag always be kept?",opts:["Above the bladder","Below the level of the bladder","On the bedside table","Wherever is convenient"],a:1},{q:"As a home care aide, you may:",opts:["Insert the catheter","Remove the catheter","Provide hygiene and empty/monitor the drainage bag","Irrigate the catheter"],a:2},{q:"When cleaning the catheter tube, wipe:",opts:["From the tube toward the body","From the insertion point outward along the tube","Back and forth quickly","Only the drainage bag"],a:1},{q:"You should call the nurse immediately if:",opts:["The urine is pale yellow","No urine has drained for 4+ hours","The bag is one-quarter full","The client drank water"],a:1}],status:"published"},
+  {id:"TM20",title:"Laundry Care",category:"Daily Living",duration:"30 min",difficulty:"Core",description:"Safe and respectful handling of client laundry: sorting, water temperatures, handling soiled/incontinence linens with infection control, special fabrics, and client preferences.",lessons:[
+    {title:"Sorting & Preparation",content:"Sort laundry by color (whites, lights, darks) and by fabric type and soil level. Check all pockets for tissues, hearing aids, glasses, or personal items before washing. Read care labels: some items are hand-wash or dry-clean only. Treat stains promptly. Keep heavily soiled or contaminated items (incontinence, bodily fluids) separate from regular laundry. Always ask about and respect the client's preferences — detergent type (some prefer fragrance-free for sensitive skin), fabric softener, water temperature, and how they like items folded or hung."},
+    {title:"Washing & Drying Basics",content:"Water temperature: hot water sanitizes and is best for heavily soiled items, whites, and contaminated linens, but can shrink or fade some fabrics. Warm water suits most everyday loads. Cold water protects bright colors and delicate fabrics and saves energy. Don't overload the machine — clothes need room to move to get clean. Measure detergent correctly; too much leaves residue that irritates skin. Drying: match dryer heat to fabric (low/delicate for synthetics and knits, regular for cottons and towels). Remove promptly to reduce wrinkles. Some items must air-dry to avoid shrinkage."},
+    {title:"Handling Soiled & Contaminated Linens",content:"For incontinence pads, bedding, or anything soiled with bodily fluids: put on gloves before handling. Do NOT shake soiled linens — this spreads germs into the air. Carry them away from your body. Empty solid waste into the toilet if appropriate. Wash contaminated items SEPARATELY from other laundry, in hot water with detergent. Disinfect surfaces the soiled laundry touched. Remove gloves and wash hands thoroughly afterward. Never leave soiled linens sitting; launder promptly to control odor and infection. This protects both the client's dignity and everyone's health."},
+    {title:"Folding, Storage & Respect",content:"Fold or hang items the way the client prefers and return them to their proper place so the client can find things independently. Handle personal clothing with care and respect — this is the client's property and dignity. Report any damaged clothing, lost items, or signs of skin issues you notice on bedding (e.g., recurring stains that might indicate a health change). Document laundry as a completed task. Keep the laundry area tidy and safe (no wet floors, no blocking walkways)."}
+  ],quiz:[{q:"Before washing, you should always:",opts:["Mix all colors together","Check pockets for personal items","Use the hottest water for everything","Skip the care labels"],a:1},{q:"When handling soiled incontinence linens, you should:",opts:["Shake them out first","Wear gloves and avoid shaking them","Wash them with the regular load","Leave them until the next shift"],a:1},{q:"Cold water is best for:",opts:["Sanitizing contaminated linens","Bright colors and delicate fabrics","Heavily soiled whites","Towels"],a:1},{q:"After folding, you should:",opts:["Put items wherever there's room","Return items to where the client prefers them","Leave them in the basket","Take them home to finish"],a:1}],status:"published"},
+  {id:"TM21",title:"Housekeeping",category:"Daily Living",duration:"35 min",difficulty:"Core",description:"Light housekeeping standards for a safe, clean, dignified home: kitchen and bathroom sanitation, fall-hazard reduction, cleaning product safety, and respecting the client's space.",lessons:[
+    {title:"Scope of Light Housekeeping",content:"Home care 'light housekeeping' keeps the client's immediate living areas clean and safe — it is not deep or heavy cleaning. Typical tasks: washing dishes, wiping counters and tables, tidying living spaces, sweeping/vacuuming main areas, cleaning the bathroom and kitchen, taking out trash, changing bed linens, and keeping pathways clear. It does NOT include heavy tasks like moving furniture, climbing ladders, cleaning the outside of windows, or cleaning areas the client doesn't use. Focus on the rooms the client lives in. Always respect that this is the client's home — ask before discarding anything and follow their preferences."},
+    {title:"Kitchen & Bathroom Sanitation",content:"Kitchen: wash dishes in hot soapy water or load the dishwasher, wipe counters and stovetop, clean spills promptly, sanitize cutting boards, check the fridge for expired food (ask before discarding), and take out food waste to avoid pests. Bathroom: clean and disinfect the toilet, sink, and tub/shower; these are high-germ areas. Replace towels. Keep the floor dry to prevent falls. Disinfect grab bars and commodes. Use separate cloths for bathroom and kitchen to avoid cross-contamination — never use the same cloth for the toilet and the kitchen counter."},
+    {title:"Cleaning Product & Chemical Safety",content:"NEVER mix cleaning products — combining bleach and ammonia (found in many glass cleaners) creates toxic gas. Read labels and follow directions. Keep products in their original labeled containers. Ensure ventilation when using strong cleaners. Store all chemicals out of reach if the client has dementia or cognitive impairment, as they may mistake them for food or drink. Wear gloves to protect your skin. Know that 'green'/vinegar-based cleaners are good fall-back options for clients with sensitivities. Wipe up any product spills immediately."},
+    {title:"Safety, Fall Prevention & Respect",content:"Housekeeping is also fall prevention: keep walkways and stairs clear, secure or remove loose throw rugs, wipe up wet floors immediately and use 'wet floor' caution, ensure good lighting, and keep frequently used items within the client's easy reach. Don't rearrange the client's belongings without asking — familiarity matters, especially for clients with dementia. Report hazards you can't fix (frayed cords, broken steps, mold) to your supervisor. Document housekeeping as a completed task. Leave the home better and safer than you found it, while honoring how the client likes their space."}
+  ],quiz:[{q:"Light housekeeping in home care includes:",opts:["Moving heavy furniture","Cleaning the client's main living areas, kitchen, and bathroom","Climbing ladders to clean windows","Cleaning rooms the client never uses"],a:1},{q:"Which is a dangerous mistake?",opts:["Using separate cloths for bathroom and kitchen","Mixing bleach and ammonia-based cleaners","Wearing gloves","Keeping floors dry"],a:1},{q:"To prevent falls while cleaning, you should:",opts:["Leave throw rugs in walkways","Keep walkways clear and wipe up wet floors immediately","Turn off the lights to save energy","Stack items in the hallway"],a:1},{q:"Before throwing away items or food, you should:",opts:["Discard anything that looks old","Ask the client first and follow their preferences","Rearrange all their belongings","Never clean the fridge"],a:1}],status:"published"},
+  {id:"TM22",title:"Transfers & Body Mechanics",category:"Clinical",duration:"70 min",difficulty:"Essential",description:"Safe client transfer techniques (bed, chair, wheelchair, toilet) using proper body mechanics, gait belts, pivot and stand-assist methods, and knowing when a transfer requires two people or a lift.",lessons:[
+    {title:"Body Mechanics — Protect Yourself & the Client",content:"Proper body mechanics prevent injury to you and the client. Key rules: keep a wide, stable base (feet shoulder-width apart), bend at your knees and hips — NOT your waist, keep your back straight, hold the client close to your body, and lift with your legs, not your back. Never twist while lifting — turn your whole body by pivoting your feet. Tighten your core. Plan the move before you start. If a transfer feels unsafe or too heavy, STOP and get help — a two-person transfer or a mechanical lift is safer than risking a fall or injury. Most caregiver back injuries come from improper transfers."},
+    {title:"Assessing the Transfer & Using a Gait Belt",content:"Before transferring, assess: Can the client bear weight on their legs? Can they follow directions? How much help do they need? Is there equipment (wheelchair, walker, lift)? Check the care plan. A gait belt is a sturdy belt placed snugly around the client's waist (over clothing) that gives you a secure handhold — never lift a client by their arms, underarms, or clothing. Place the belt, check you can fit a flat hand under it, and grasp it underhand from below. Explain every step to the client and let them help as much as they safely can. Lock all wheels/brakes and clear the path first."},
+    {title:"Stand-Pivot & Sit-to-Stand Transfers",content:"STAND-PIVOT (bed to wheelchair): Position the wheelchair at a slight angle on the client's strong side, brakes locked. Help the client sit at the edge of the bed, feet flat on floor. Apply the gait belt. Stand directly in front, brace their knees with yours, grasp the belt. On a count of three, have the client push off the bed as you guide them to stand. Pivot together — small steps, you turning your feet, not twisting — until their legs touch the chair. Have them reach back for the armrests and lower slowly. Never pull; guide. For clients who can stand briefly, this is the standard transfer. Keep movements slow and announce each step."},
+    {title:"When NOT to Transfer Alone — Two-Person & Lifts",content:"Get a second caregiver or use a mechanical lift (Hoyer) when: the client cannot bear any weight, is much larger than you, is uncooperative or unpredictable, has had a recent fall or fracture, has tubes/lines that complicate movement, or the care plan specifies it. Trust your judgment — it is always better to wait for help than to risk dropping a client. NEVER let a client put their arms around your neck (they can pull you down). If a client starts to fall during a transfer, do NOT try to hold them up — protect their head, ease them down to the floor in a controlled way, then assess and call for help. Document every transfer: method used, number of staff, equipment, and any difficulty."}
+  ],quiz:[{q:"When lifting, you should bend at your:",opts:["Waist","Knees and hips","Shoulders","Neck"],a:1},{q:"A gait belt should be used to:",opts:["Lift the client by their arms","Give you a secure handhold around the client's waist","Tie the client to the wheelchair","Replace a mechanical lift for any client"],a:1},{q:"You should get help or use a lift when:",opts:["The client can walk independently","The client cannot bear weight or is much larger than you","The transfer is short","The client asks to do it themselves"],a:1},{q:"If a client begins to fall during a transfer, you should:",opts:["Try to hold them upright at all costs","Protect their head and ease them down in a controlled way","Step away quickly","Grab their arms and pull"],a:1}],status:"published"},
 ];
 
 // ─── SEED: TASKS, CHORES, EVENTS ────────────────────────────────────
 const seedChores=[
-  {id:"CH1",clientId:"CL1",title:"Light housekeeping",frequency:"Every visit",priority:"routine",status:"active",lastDone:today(),assignedTo:"CG1"},
-  {id:"CH2",clientId:"CL1",title:"Laundry (wash, dry, fold)",frequency:"2x/week",priority:"routine",status:"active",lastDone:"2026-03-07",assignedTo:"CG1"},
-  {id:"CH3",clientId:"CL2",title:"Grocery shopping",frequency:"Weekly",priority:"routine",status:"active",lastDone:"2026-03-04",assignedTo:"CG4"},
-  {id:"CH4",clientId:"CL2",title:"Dog care (walk Buddy, feed)",frequency:"Every visit",priority:"high",status:"active",lastDone:today(),assignedTo:"CG4"},
-  {id:"CH5",clientId:"CL2",title:"Change bedding",frequency:"Weekly",priority:"routine",status:"active",lastDone:"2026-03-01",assignedTo:"CG4"},
-  {id:"CH6",clientId:"CL3",title:"Medication pickup (CVS)",frequency:"Monthly",priority:"high",status:"active",lastDone:"2026-02-25",assignedTo:"CG3"},
-  {id:"CH7",clientId:"CL3",title:"Light meal prep",frequency:"Every visit",priority:"routine",status:"active",lastDone:today(),assignedTo:"CG3"},
+  {id:"CH1",clientId:"CL1",title:"Light housekeeping",description:"Tidy living areas, wipe kitchen counters, take out trash. Focus on living room and kitchen.",frequency:"Every visit",priority:"routine",status:"active",lastDone:today(),assignedTo:"CG1",comments:[],completions:[],approvalStatus:"approved",requestedBy:null},
+  {id:"CH2",clientId:"CL1",title:"Laundry (wash, dry, fold)",description:"Wash whites and colors separately. Fold and put away in bedroom dresser. Becky prefers fabric softener.",frequency:"2x/week",priority:"routine",status:"active",lastDone:"2026-03-07",assignedTo:"CG1",comments:[],completions:[],approvalStatus:"approved",requestedBy:null},
+  {id:"CH3",clientId:"CL2",title:"Grocery shopping",description:"Use the list on the fridge. Diabetic-friendly items only. Receipts to be logged as expense.",frequency:"Weekly",priority:"routine",status:"active",lastDone:"2026-03-04",assignedTo:"CG4",comments:[],completions:[],approvalStatus:"approved",requestedBy:null},
+  {id:"CH4",clientId:"CL2",title:"Dog care (walk Buddy, feed)",description:"Walk Buddy 15-20 min. Feed 1 cup twice daily. Fresh water. Buddy is friendly but pulls on leash.",frequency:"Every visit",priority:"high",status:"active",lastDone:today(),assignedTo:"CG4",comments:[],completions:[],approvalStatus:"approved",requestedBy:null},
+  {id:"CH5",clientId:"CL2",title:"Change bedding",description:"Fresh sheets and pillowcases. Linens in hall closet.",frequency:"Weekly",priority:"routine",status:"active",lastDone:"2026-03-01",assignedTo:"CG4",comments:[],completions:[],approvalStatus:"approved",requestedBy:null},
+  {id:"CH6",clientId:"CL3",title:"Medication pickup (CVS)",description:"CVS on Marine Dr. Steven's Parkinson's meds. Bring ID. Call ahead to confirm ready.",frequency:"Monthly",priority:"high",status:"active",lastDone:"2026-02-25",assignedTo:"CG3",comments:[],completions:[],approvalStatus:"approved",requestedBy:null},
+  {id:"CH7",clientId:"CL3",title:"Light meal prep",description:"Soft foods, easy to swallow. Steven has difficulty with utensils — pre-cut food into small pieces.",frequency:"Every visit",priority:"routine",status:"active",lastDone:today(),assignedTo:"CG3",comments:[],completions:[],approvalStatus:"approved",requestedBy:null},
 ];
 
 const seedIncidents=[
@@ -1782,9 +1847,9 @@ tr:hover td{background:rgba(0,0,0,.015)}
 .clock-btn-row{display:flex;gap:8px;margin-top:18px}
 .clock-btn{flex:1;padding:14px;border:none;font-size:12px;font-weight:600;letter-spacing:1px;text-transform:uppercase;cursor:pointer;font-family:var(--f);transition:.15s}
 .clock-btn:active{transform:scale(.98)}
-.clock-btn-in{background:var(--white);color:var(--black)}
+.clock-btn-in{background:#86c98a;color:#0a2a0c}
 .clock-btn-out{background:#7a3030;color:var(--white)}
-.clock-btn-break{background:rgba(255,255,255,.1);color:var(--white);border:1px solid rgba(255,255,255,.15)}
+.clock-btn-break{background:#a9cfe6;color:#0c3247}
 .gps-indicator{display:flex;align-items:center;gap:6px;font-size:11px;opacity:.5;margin-top:12px}
 .gps-dot{width:6px;height:6px;border-radius:50%;background:#3c4f3d;animation:pulse 2.5s infinite}
 .gps-trail{display:flex;gap:2px;flex-wrap:wrap;margin-top:10px}
@@ -1995,13 +2060,60 @@ function LoginScreen({onLogin}){
 function CGScheduleView({user,schedules,clients}){
   const [weekStart,setWS]=useState(getMonday(now()));
   const [selDay,setSD]=useState(toISO(now()));
+  const [view,setView]=useState("week"); // week | month
+  const [monthAnchor,setMonthAnchor]=useState(new Date(now().getFullYear(),now().getMonth(),1));
   const weekDates=Array.from({length:7},(_,i)=>addDays(weekStart,i));
   const mySched=schedules.filter(s=>s.caregiverId===user.caregiverId&&s.status==="published");
   const weekSched=mySched.filter(s=>s.date>=toISO(weekStart)&&s.date<=toISO(addDays(weekStart,6)));
   const daySched=mySched.filter(s=>s.date===selDay).sort((a,b)=>a.startTime.localeCompare(b.startTime));
   const weekHrs=weekSched.reduce((s,sh)=>s+(timeToMin(sh.endTime)-timeToMin(sh.startTime))/60,0);
+  // Month grid calc
+  const mY=monthAnchor.getFullYear(),mM=monthAnchor.getMonth();
+  const firstDow=new Date(mY,mM,1).getDay();
+  const daysInMonth=new Date(mY,mM+1,0).getDate();
+  const monthSched=mySched.filter(s=>{const d=fromISO(s.date);return d.getFullYear()===mY&&d.getMonth()===mM;});
+  const monthHrs=monthSched.reduce((s,sh)=>s+(timeToMin(sh.endTime)-timeToMin(sh.startTime))/60,0);
+  const monthCells=[];
+  for(let i=0;i<firstDow;i++)monthCells.push(null);
+  for(let d=1;d<=daysInMonth;d++)monthCells.push(d);
 
   return <div>
+    <div style={{display:"flex",gap:6,marginBottom:12}}>
+      <button className={`btn btn-sm ${view==="week"?"btn-p":"btn-s"}`} onClick={()=>setView("week")}>Week</button>
+      <button className={`btn btn-sm ${view==="month"?"btn-p":"btn-s"}`} onClick={()=>setView("month")}>Month</button>
+    </div>
+
+    {view==="month"?<div>
+      <div className="cg-stat-grid" style={{gridTemplateColumns:"repeat(3,1fr)",marginBottom:14}}>
+        <div className="cg-stat"><div className="lbl">This Month</div><div className="val">{monthSched.length}</div><div className="lbl">shifts</div></div>
+        <div className="cg-stat"><div className="lbl">Hours</div><div className="val">{monthHrs.toFixed(0)}</div><div className="lbl">scheduled</div></div>
+        <div className="cg-stat"><div className="lbl">Clients</div><div className="val">{new Set(monthSched.map(s=>s.clientId)).size}</div><div className="lbl">this month</div></div>
+      </div>
+      <div className="week-nav">
+        <button onClick={()=>setMonthAnchor(new Date(mY,mM-1,1))}>←</button>
+        <div className="wn-center" onClick={()=>setMonthAnchor(new Date(now().getFullYear(),now().getMonth(),1))}><div className="wn-label">{monthAnchor.toLocaleDateString("en-US",{month:"long",year:"numeric"})}</div><div className="wn-sub">Tap for current month</div></div>
+        <button onClick={()=>setMonthAnchor(new Date(mY,mM+1,1))}>→</button>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,marginBottom:4}}>
+        {["S","M","T","W","T","F","S"].map((d,i)=><div key={i} style={{textAlign:"center",fontSize:10,fontWeight:700,color:"var(--t2)",padding:"4px 0"}}>{d}</div>)}
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2}}>
+        {monthCells.map((d,i)=>{
+          if(d===null)return <div key={i} style={{minHeight:64,background:"transparent"}}/>;
+          const iso=toISO(new Date(mY,mM,d));
+          const dayShifts=mySched.filter(s=>s.date===iso).sort((a,b)=>a.startTime.localeCompare(b.startTime));
+          const isToday=iso===toISO(now());
+          const dayHrs=dayShifts.reduce((s,sh)=>s+(timeToMin(sh.endTime)-timeToMin(sh.startTime))/60,0);
+          return <div key={i} onClick={()=>{setSD(iso);setView("week");setWS(getMonday(fromISO(iso)));}} style={{minHeight:64,padding:4,border:isToday?"2px solid #3c4f3d":"var(--border-thin)",background:dayShifts.length?"rgba(60,79,61,.06)":"var(--card)",cursor:"pointer",display:"flex",flexDirection:"column",gap:2}}>
+            <div style={{fontSize:11,fontWeight:isToday?700:500,color:isToday?"#3c4f3d":"var(--t1)"}}>{d}</div>
+            {dayShifts.slice(0,2).map((s,j)=>{const cl=clients.find(c=>c.id===s.clientId);return <div key={j} style={{fontSize:8,padding:"1px 3px",background:s.color||"#3c4f3d",color:"#fff",borderRadius:2,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{s.startTime} {cl?.name?.split(" ")[0]}</div>;})}
+            {dayShifts.length>2&&<div style={{fontSize:8,color:"var(--t2)"}}>+{dayShifts.length-2} more</div>}
+            {dayHrs>0&&<div style={{fontSize:8,color:"var(--t2)",marginTop:"auto"}}>{dayHrs.toFixed(1)}h</div>}
+          </div>;
+        })}
+      </div>
+      <div style={{fontSize:11,color:"var(--t2)",marginTop:10,textAlign:"center"}}>Tap any day to see its shifts in week view</div>
+    </div>:<div>
     <div className="cg-stat-grid" style={{gridTemplateColumns:"repeat(3,1fr)",marginBottom:14}}>
       <div className="cg-stat"><div className="lbl">This Week</div><div className="val">{weekSched.length}</div><div className="lbl">shifts</div></div>
       <div className="cg-stat"><div className="lbl">Hours</div><div className="val">{weekHrs.toFixed(0)}</div><div className="lbl">scheduled</div></div>
@@ -2042,10 +2154,11 @@ function CGScheduleView({user,schedules,clients}){
         </div>}
       </div>;
     })}
+    </div>}
   </div>;
 }
 
-function CaregiverPortal({user,clients,caregivers,careNotes,setCareNotes,incidents,setIncidents,expenses,setExpenses,events,chores,schedules,trainingProgress,setTrainingProgress,familyMsgs,setFamilyMsgs,modal,setModal,notify,assignments,incidentPrompts,getAssignedClients,allUsers,onReferCG,onReferClient}){
+function CaregiverPortal({user,clients,caregivers,careNotes,setCareNotes,incidents,setIncidents,expenses,setExpenses,events,chores,setChores,schedules,trainingProgress,setTrainingProgress,familyMsgs,setFamilyMsgs,modal,setModal,notify,assignments,incidentPrompts,getAssignedClients,allUsers,onReferCG,onReferClient}){
   const [tab,setTab]=useState("home");
   const [shift,setShift]=useState(null);
   const [shiftHistory,setShiftHistory]=useState([]);
@@ -2063,6 +2176,15 @@ function CaregiverPortal({user,clients,caregivers,careNotes,setCareNotes,inciden
   const [incidentRec,setIncidentRec]=useState(null);
   const [gpsBusy,setGpsBusy]=useState(false);
   const [gpsErr,setGpsErr]=useState("");
+  // Location sharing — auto-on from clock-in (or late) to clock-out
+  const [locShare,setLocShare]=useState(false); // true while broadcasting to team
+  const [locShareReason,setLocShareReason]=useState(""); // "shift" | "late"
+  const [cgClientExpand,setCgClientExpand]=useState({}); // {clientId:{dx,meds,diet,transfers}}
+  const [taskDetail,setTaskDetail]=useState(null); // chore being viewed
+  const [taskComment,setTaskComment]=useState("");
+  const [taskCompPhoto,setTaskCompPhoto]=useState(null);
+  const [taskCompNote,setTaskCompNote]=useState("");
+  const locWatchRef=useRef(null); // navigator.geolocation.watchPosition id
   const gpsRef=useRef(null);
   const cg=caregivers.find(c=>c.id===user.caregiverId);
 
@@ -2088,6 +2210,39 @@ function CaregiverPortal({user,clients,caregivers,careNotes,setCareNotes,inciden
     } else { if(gpsRef.current)clearInterval(gpsRef.current); }
   },[shift]);
 
+  // ═══ AUTO LOCATION SHARING (clock-in/late → clock-out) ═══
+  // Starts a real-GPS watch that posts this caregiver's position to Supabase
+  // so the team's Live GPS Map can see them. Tied to the shift, not to login.
+  const startLocationShare=(reason)=>{
+    if(!user.caregiverId)return;
+    if(!("geolocation" in navigator)){setGpsErr("Geolocation not supported by this browser.");return;}
+    if(typeof window!=="undefined"&&window.isSecureContext===false){setGpsErr("Location sharing requires HTTPS — open the deployed https:// site.");return;}
+    setLocShare(true);setLocShareReason(reason||"shift");setGpsErr("");
+    const onPos=(p)=>{
+      setGpsErr("");
+      const pos={lat:p.coords.latitude,lng:p.coords.longitude,accuracy:Math.round(p.coords.accuracy||0),speed:p.coords.speed?Math.round(p.coords.speed*2.237):0,heading:p.coords.heading||null};
+      sbPostLocation(user.caregiverId,pos,"on_shift",null);
+    };
+    const onErr=(err)=>{
+      if(err.code===1){setGpsErr("📍 Location permission denied — enable it in your browser settings to share your location with the office.");}
+      else if(err.code===2){setGpsErr("📍 Position unavailable — check that your device's location services are on.");}
+      else if(err.code===3){/* timeout — watch keeps retrying, don't alarm */}
+      else{setGpsErr("📍 "+(err.message||"Couldn't get your location."));}
+    };
+    // Request an immediate fix first — this reliably surfaces the permission
+    // prompt (the late path has no prior GPS call to trigger it), then start the watch.
+    navigator.geolocation.getCurrentPosition(onPos,onErr,{enableHighAccuracy:true,maximumAge:0,timeout:15000});
+    if(locWatchRef.current!=null)navigator.geolocation.clearWatch(locWatchRef.current);
+    locWatchRef.current=navigator.geolocation.watchPosition(onPos,onErr,{enableHighAccuracy:true,maximumAge:5000,timeout:20000});
+  };
+  const stopLocationShare=()=>{
+    if(locWatchRef.current!=null){navigator.geolocation.clearWatch(locWatchRef.current);locWatchRef.current=null;}
+    setLocShare(false);setLocShareReason("");
+    if(user.caregiverId)sbClearLocation(user.caregiverId);
+  };
+  // Cleanup the watch on unmount (does not change the shared status server-side)
+  useEffect(()=>()=>{if(locWatchRef.current!=null)navigator.geolocation.clearWatch(locWatchRef.current);},[]);
+
   const clockIn=async(clientId)=>{
     const cl=clients.find(c=>c.id===clientId);
     const geo=clientGeo(clientId,clients);
@@ -2104,6 +2259,8 @@ function CaregiverPortal({user,clients,caregivers,careNotes,setCareNotes,inciden
     if(geo){const d=gpsDist(gps,geo);inFence=d<=(geo.radius/1609.34);} // radius is meters → miles
     setShift({id:"SH"+uid(),clientId,clientName:cl?.name||loc?.name||"Client",clockInTime:now(),clockInGPS:gps,clockInAddr:addr,inFence,geoMissing:!geo,breaks:[],onBreak:false});
     setGpsTrail([gps]);
+    // Auto-start location sharing for the duration of the shift
+    startLocationShare("shift");
     // Notify client, owner, admin
     if(notify){
       const msg=`${user.name} has clocked in for ${cl?.name||"client"} at ${addr}${!geo?" (no geofence set)":inFence?"":" (⚠️ outside geofence)"}`;
@@ -2131,6 +2288,8 @@ function CaregiverPortal({user,clients,caregivers,careNotes,setCareNotes,inciden
       if(d>0.5) setTravel(p=>({miles:p.miles+d,segments:[...p.segments,{from:last.clientName,to:shift.clientName,miles:d}]}));
     }
     setShift(null);setGpsTrail([]);
+    // Stop location sharing at clock-out
+    stopLocationShare();
   };
 
   const toggleBreak=()=>{
@@ -2189,6 +2348,8 @@ function CaregiverPortal({user,clients,caregivers,careNotes,setCareNotes,inciden
     setLateAlert(alert);
     setLateHistory(p=>[alert,...p]);
     setShowLateForm(null);
+    // Auto-start location sharing when running late (so dispatch can watch them approach)
+    if(!locShare)startLocationShare("late");
     // Notify client, owner, admin, and family
     if(notify){
       const clientMsg=`Hi ${cl?.name}, your caregiver ${user.name} is running approximately ${etaMins} minutes late. Reason: ${lateReason}. Expected arrival: ${arrivalStr}. We apologize for the inconvenience. Call 708-476-0021 with questions.`;
@@ -2212,7 +2373,7 @@ function CaregiverPortal({user,clients,caregivers,careNotes,setCareNotes,inciden
   const dismissLate=()=>setLateAlert(null);
 
   const tabs=[
-    {key:"home",label:"Home"},{key:"timeclock",label:"Time Clock"},{key:"schedule",label:"Schedule"},{key:"clients",label:"My Clients"},{key:"notes",label:"Care Notes"},
+    {key:"home",label:"Home"},{key:"timeclock",label:"Time Clock"},{key:"schedule",label:"Schedule"},{key:"mytask",label:"My Task"},{key:"clients",label:"My Clients"},{key:"notes",label:"Care Notes"},
     {key:"expenses",label:"Expenses"},{key:"training",label:"Training"},{key:"messages",label:"Messages"},{key:"refer",label:"📣 Refer"},
   ];
 
@@ -2285,6 +2446,19 @@ function CaregiverPortal({user,clients,caregivers,careNotes,setCareNotes,inciden
 
     {/* ═══ TIME CLOCK ═══ */}
     {tab==="timeclock"&& <div>
+
+      {/* Location Sharing Disclosure Banner */}
+      {locShare&& <div style={{background:"#0c4a6e",color:"#fff",padding:"10px 16px",marginBottom:12,display:"flex",alignItems:"center",gap:10,fontSize:12}}>
+        <div style={{width:8,height:8,borderRadius:"50%",background:"#4ade80",animation:"pulse 2.5s infinite",flexShrink:0}}/>
+        <div style={{flex:1}}>
+          <strong>📍 Location sharing is ON</strong> — your live location is visible to the office {locShareReason==="late"?"because you reported running late":"during your shift"}. It turns off automatically when you clock out.
+        </div>
+        <button className="btn btn-sm" style={{background:"rgba(255,255,255,.15)",color:"#fff",border:"1px solid rgba(255,255,255,.3)",flexShrink:0}} onClick={stopLocationShare} title="Stop sharing your location">Stop</button>
+      </div>}
+
+      {/* GPS error (shows on any path: clock-in, late, share) */}
+      {gpsErr&&!locShare&&<div style={{background:"#fee2e2",border:"1px solid #dc2626",padding:"10px 14px",marginBottom:12,fontSize:12,color:"#7f1d1d"}}>{gpsErr}</div>}
+      {gpsErr&&locShare&&<div style={{background:"#7f1d1d",color:"#fecaca",padding:"8px 14px",marginBottom:12,fontSize:11}}>⚠️ Sharing is on, but: {gpsErr}</div>}
 
       {/* Running Late Active Banner */}
       {lateAlert&& <div className="late-banner">
@@ -2436,20 +2610,136 @@ function CaregiverPortal({user,clients,caregivers,careNotes,setCareNotes,inciden
     {/* ═══ SCHEDULE ═══ */}
     {tab==="schedule"&& <CGScheduleView user={user} schedules={schedules} clients={clients}/>}
 
+    {/* ═══ MY TASK ═══ */}
+    {tab==="mytask"&& (()=>{
+      const myTasks=chores.filter(ch=>ch.assignedTo===user.caregiverId&&ch.approvalStatus!=="denied");
+      const addComment=(choreId)=>{
+        if(!taskComment.trim())return;
+        setChores(p=>p.map(ch=>ch.id===choreId?{...ch,comments:[...(ch.comments||[]),{id:"TC"+uid(),by:user.name,byId:user.caregiverId,text:taskComment.trim(),date:now().toISOString()}]}:ch));
+        setTaskComment("");
+      };
+      const markComplete=(choreId)=>{
+        const comp={id:"TX"+uid(),by:user.name,byId:user.caregiverId,date:now().toISOString(),note:taskCompNote.trim(),photo:taskCompPhoto};
+        setChores(p=>p.map(ch=>ch.id===choreId?{...ch,lastDone:today(),completions:[comp,...(ch.completions||[])]}:ch));
+        setTaskCompNote("");setTaskCompPhoto(null);
+        const t=chores.find(c=>c.id===choreId);
+        if(notify)notify("U1","task","Task Completed",`${user.name} completed "${t?.title}"`,{});
+        setTaskDetail(null);
+      };
+      if(taskDetail){const ch=chores.find(c=>c.id===taskDetail.id)||taskDetail;const cl=clients.find(c=>c.id===ch.clientId);
+        return <div>
+          <button className="btn btn-sm btn-s" style={{marginBottom:12}} onClick={()=>{setTaskDetail(null);setTaskCompPhoto(null);setTaskCompNote("");}}>← Back to tasks</button>
+          <div className="card card-b">
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
+              <div><div style={{fontFamily:"var(--fd)",fontSize:20,fontWeight:400}}>{ch.title}</div><div style={{fontSize:12,color:"var(--t2)",marginTop:2}}>{cl?.name} · {ch.frequency}</div></div>
+              <span className={`tag ${ch.priority==="high"?"tag-er":"tag-ok"}`}>{ch.priority}</span>
+            </div>
+            {ch.description&&<div style={{padding:"12px 14px",background:"var(--bg)",fontSize:13,lineHeight:1.6,marginBottom:14}}>{ch.description}</div>}
+            <div style={{border:"var(--border-thin)",padding:14,marginBottom:14}}>
+              <div style={{fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:.5,color:"var(--t2)",marginBottom:8}}>✅ Mark Complete</div>
+              {taskCompPhoto&&<div style={{position:"relative",marginBottom:8}}><img src={taskCompPhoto} alt="Completion" style={{width:"100%",maxHeight:200,objectFit:"cover"}}/><button className="btn btn-sm btn-s" style={{position:"absolute",top:8,right:8}} onClick={()=>setTaskCompPhoto(null)}>Remove</button></div>}
+              <textarea value={taskCompNote} onChange={e=>setTaskCompNote(e.target.value)} placeholder="Completion note (optional) — what did you do?" rows={2} style={{width:"100%",marginBottom:8,fontFamily:"var(--f)",fontSize:13}}/>
+              <div style={{display:"flex",gap:6}}>
+                <label className="btn btn-sm btn-s" style={{cursor:"pointer"}}>{taskCompPhoto?"✓ Photo":"📷 Add Photo"}<input type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>{const f=e.target.files[0];if(f){if(f.size>5*1024*1024){alert("Max 5MB");return;}const r=new FileReader();r.onload=ev=>setTaskCompPhoto(ev.target.result);r.readAsDataURL(f);}}}/></label>
+                <button className="btn btn-sm btn-p" style={{marginLeft:"auto"}} onClick={()=>markComplete(ch.id)}>✅ Mark Done</button>
+              </div>
+            </div>
+            {(ch.completions||[]).length>0&&<div style={{marginBottom:14}}>
+              <div style={{fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:.5,color:"var(--t2)",marginBottom:8}}>Completion History ({ch.completions.length})</div>
+              {ch.completions.map(c=><div key={c.id} style={{display:"flex",gap:10,padding:"8px 0",borderBottom:"var(--border-thin)"}}>
+                {c.photo&&<a href={c.photo} target="_blank" rel="noopener noreferrer"><img src={c.photo} alt="done" style={{width:48,height:48,objectFit:"cover",border:"var(--border-thin)"}}/></a>}
+                <div style={{flex:1}}><div style={{fontSize:12,fontWeight:600}}>{c.by}</div><div style={{fontSize:10,color:"var(--t2)"}}>{fmtRel(c.date)}</div>{c.note&&<div style={{fontSize:12,marginTop:2}}>{c.note}</div>}</div>
+              </div>)}
+            </div>}
+            <div>
+              <div style={{fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:.5,color:"var(--t2)",marginBottom:8}}>💬 Comments</div>
+              {(ch.comments||[]).map(c=><div key={c.id} style={{padding:"8px 10px",background:"var(--bg)",marginBottom:6}}><div style={{fontSize:11,color:"var(--t2)"}}>{c.by} · {fmtRel(c.date)}</div><div style={{fontSize:13}}>{c.text}</div></div>)}
+              <div style={{display:"flex",gap:6,marginTop:6}}>
+                <input value={taskComment} onChange={e=>setTaskComment(e.target.value)} placeholder="Add a comment…" style={{flex:1,padding:"8px 10px",border:"var(--border-thin)",fontSize:13}} onKeyDown={e=>e.key==="Enter"&&addComment(ch.id)}/>
+                <button className="btn btn-sm btn-p" onClick={()=>addComment(ch.id)} disabled={!taskComment.trim()}>Post</button>
+              </div>
+            </div>
+          </div>
+        </div>;
+      }
+      return <div>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+          <h3 style={{fontFamily:"var(--fd)",fontSize:16}}>My Tasks</h3>
+          <span style={{fontSize:12,color:"var(--t2)"}}>{myTasks.length} task{myTasks.length!==1?"s":""}</span>
+        </div>
+        {myTasks.length===0?<div className="empty card card-b">No tasks assigned yet.</div>:
+        myTasks.map(ch=>{const cl=clients.find(c=>c.id===ch.clientId);const doneToday=ch.lastDone===today();
+          return <div key={ch.id} className="card card-b" style={{marginBottom:8,cursor:"pointer"}} onClick={()=>{setTaskDetail(ch);setTaskCompPhoto(null);setTaskCompNote("");}}>
+            <div style={{display:"flex",gap:12,alignItems:"center"}}>
+              <div style={{fontSize:24}}>{doneToday?"✅":ch.priority==="high"?"🔴":"📋"}</div>
+              <div style={{flex:1}}>
+                <div style={{fontSize:14,fontWeight:600}}>{ch.title}</div>
+                <div style={{fontSize:11,color:"var(--t2)"}}>{cl?.name} · {ch.frequency}{ch.requestedBy?` · requested by ${ch.requestedBy}`:""}</div>
+                {ch.description&&<div style={{fontSize:11,color:"var(--t2)",marginTop:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ch.description}</div>}
+              </div>
+              <div style={{textAlign:"right"}}>
+                {(ch.comments||[]).length>0&&<span style={{fontSize:11,color:"var(--t2)"}}>💬 {ch.comments.length}</span>}
+                <div style={{fontSize:10,color:doneToday?"var(--ok)":"var(--t2)",marginTop:2}}>{doneToday?"Done today":"Tap to open"}</div>
+              </div>
+            </div>
+          </div>;
+        })}
+      </div>;
+    })()}
+
     {/* ═══ CLIENTS ═══ */}
     {tab==="clients"&& <div>
-      {myClients.map(cl=> <div key={cl.id} className="card card-b">
+      {myClients.map(cl=>{
+        const exp=cgClientExpand[cl.id]||{};
+        const toggle=(k)=>setCgClientExpand(p=>({...p,[cl.id]:{...(p[cl.id]||{}),[k]:!(p[cl.id]||{})[k]}}));
+        const meds=(cl.meds||[]).map(normalizeMed);
+        return <div key={cl.id} className="card card-b">
         <div style={{display:"flex",gap:14,alignItems:"center",marginBottom:12}}>
           <ProfileAvatar name={cl.name} photo={cl.photo} size={48} dark/>
           <div style={{flex:1}}><div style={{fontFamily:"var(--fd)",fontSize:18,fontWeight:400}}>{cl.name}</div><div style={{fontSize:12,color:"var(--t2)"}}>{cl.addr}</div></div>
           <span className={`tag tag-${cl.riskLevel==="low"?"ok":cl.riskLevel==="medium"?"wn":"er"}`}>{cl.riskLevel}</span>
         </div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
-          <div style={{background:"var(--bg)",padding:10}}><div style={{fontSize:9,color:"var(--t2)",textTransform:"uppercase",letterSpacing:.5}}>Diagnoses</div><div style={{fontSize:12,fontWeight:600,marginTop:2}}>{cl.dx.length}</div></div>
-          <div style={{background:"var(--bg)",padding:10}}><div style={{fontSize:9,color:"var(--t2)",textTransform:"uppercase",letterSpacing:.5}}>Medications</div><div style={{fontSize:12,fontWeight:600,marginTop:2}}>{cl.meds.length}</div></div>
-          <div style={{background:"var(--bg)",padding:10}}><div style={{fontSize:9,color:"var(--t2)",textTransform:"uppercase",letterSpacing:.5}}>Diet</div><div style={{fontSize:12,fontWeight:600,marginTop:2}}>{cl.preferences.diet}</div></div>
+        {/* Tappable section headers */}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8}}>
+          {[
+            {k:"dx",label:"Diagnoses",count:cl.dx?.length||0},
+            {k:"meds",label:"Medications",count:meds.length},
+            {k:"diet",label:"Diet",count:cl.preferences?.diet?"•":"—"},
+            {k:"transfers",label:"Transfers",count:cl.adl?.transferring?"•":"—"},
+          ].map(s=><div key={s.k} onClick={()=>toggle(s.k)} style={{background:exp[s.k]?"#3c4f3d":"var(--bg)",color:exp[s.k]?"#fff":"inherit",padding:10,cursor:"pointer",transition:".15s",border:"var(--border-thin)"}}>
+            <div style={{fontSize:9,textTransform:"uppercase",letterSpacing:.5,opacity:.8}}>{s.label} {exp[s.k]?"▲":"▼"}</div>
+            <div style={{fontSize:12,fontWeight:600,marginTop:2}}>{typeof s.count==="number"?s.count:s.count}</div>
+          </div>)}
         </div>
-      </div>)}
+        {/* Expanded detail panels */}
+        {exp.dx&&<div style={{marginTop:8,padding:"10px 12px",background:"var(--bg)",border:"var(--border-thin)"}}>
+          <div style={{fontSize:10,fontWeight:700,textTransform:"uppercase",color:"var(--t2)",marginBottom:6}}>Diagnoses</div>
+          {(cl.dx||[]).length===0?<div style={{fontSize:12,color:"var(--t2)"}}>None on file</div>:(cl.dx||[]).map((d,i)=><div key={i} style={{fontSize:12,padding:"3px 0"}}>• {d}</div>)}
+        </div>}
+        {exp.meds&&<div style={{marginTop:8,padding:"10px 12px",background:"var(--bg)",border:"var(--border-thin)"}}>
+          <div style={{fontSize:10,fontWeight:700,textTransform:"uppercase",color:"var(--t2)",marginBottom:6}}>Medications</div>
+          {meds.length===0?<div style={{fontSize:12,color:"var(--t2)"}}>None on file</div>:meds.map((m,i)=><div key={i} style={{display:"flex",gap:8,alignItems:"flex-start",padding:"6px 0",borderBottom:i<meds.length-1?"var(--border-thin)":""}}>
+            {m.photo?<img src={m.photo} alt="Pill" style={{width:36,height:36,objectFit:"cover",border:"var(--border-thin)",cursor:"pointer"}} onClick={()=>window.open(m.photo,"_blank")}/>:<div style={{width:36,height:36,fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>💊</div>}
+            <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600}}>{m.name}{m.dose?" — "+m.dose:""}</div>
+            <div style={{fontSize:11,color:"var(--t2)"}}>{[m.frequency,m.time].filter(Boolean).join(" • ")}</div>
+            {m.reason&&<div style={{fontSize:11,color:"var(--t2)",fontStyle:"italic"}}>For: {m.reason}</div>}</div>
+          </div>)}
+          {meds.length>0&&<div style={{fontSize:10,color:"var(--t2)",marginTop:8,fontStyle:"italic"}}>{PILL_PHOTO_DISCLAIMER}</div>}
+        </div>}
+        {exp.diet&&<div style={{marginTop:8,padding:"10px 12px",background:"var(--bg)",border:"var(--border-thin)"}}>
+          <div style={{fontSize:10,fontWeight:700,textTransform:"uppercase",color:"var(--t2)",marginBottom:6}}>Diet & Preferences</div>
+          <div style={{fontSize:12}}><strong>Diet:</strong> {cl.preferences?.diet||"Not specified"}</div>
+          {cl.preferences?.allergies&&<div style={{fontSize:12,marginTop:3}}><strong>Allergies:</strong> {cl.preferences.allergies}</div>}
+          {cl.preferences?.likes&&<div style={{fontSize:12,marginTop:3}}><strong>Likes:</strong> {cl.preferences.likes}</div>}
+          {cl.preferences?.dislikes&&<div style={{fontSize:12,marginTop:3}}><strong>Dislikes:</strong> {cl.preferences.dislikes}</div>}
+        </div>}
+        {exp.transfers&&<div style={{marginTop:8,padding:"10px 12px",background:"var(--bg)",border:"var(--border-thin)"}}>
+          <div style={{fontSize:10,fontWeight:700,textTransform:"uppercase",color:"var(--t2)",marginBottom:6}}>Transfers & Mobility</div>
+          <div style={{fontSize:12}}><strong>Transferring:</strong> {cl.adl?.transferring||"Not specified"}</div>
+          {cl.adl?.mobility&&<div style={{fontSize:12,marginTop:3}}><strong>Mobility:</strong> {cl.adl.mobility}</div>}
+        </div>}
+      </div>;})}
+      {myClients.length===0&&<div className="empty">No clients assigned yet.</div>}
     </div>}
 
     {/* ═══ NOTES ═══ */}
@@ -3240,6 +3530,36 @@ export default function App(){
   // eslint-disable-next-line
   },[caregivers]);
 
+  // ═══ TASK / CHORE PERSISTENCE (auto-save to Supabase) ═══
+  const [choreSync,setChoreSync]=useState("idle");
+  const choresLoadedRef=useRef(false);
+  const choreSaveTimer=useRef(null);
+  useEffect(()=>{
+    let active=true;
+    (async()=>{
+      setChoreSync("loading");
+      const loaded=await sbLoadChores();
+      if(!active)return;
+      if(loaded&&loaded.length>0){setChores(loaded);setChoreSync("saved");}
+      else if(loaded===null){setChoreSync("offline");}
+      else{setChoreSync("saved");}
+      setTimeout(()=>{choresLoadedRef.current=true;},300);
+    })();
+    return()=>{active=false;};
+  },[]);
+  useEffect(()=>{
+    if(!choresLoadedRef.current)return;
+    if(choreSync==="offline")return;
+    if(choreSaveTimer.current)clearTimeout(choreSaveTimer.current);
+    setChoreSync("saving");
+    choreSaveTimer.current=setTimeout(async()=>{
+      const ok=await sbSaveChoresBulk(chores);
+      setChoreSync(ok?"saved":"error");
+    },800);
+    return()=>{if(choreSaveTimer.current)clearTimeout(choreSaveTimer.current);};
+  // eslint-disable-next-line
+  },[chores]);
+
   // Load photos from Supabase Storage on startup
   useEffect(()=>{
     const loadPhotos=async()=>{
@@ -3328,7 +3648,7 @@ export default function App(){
       </div>
     </div>
     <div className="main">
-      <CaregiverPortal user={user} clients={clients} caregivers={caregivers} careNotes={careNotes} setCareNotes={setCareNotes} incidents={incidents} setIncidents={setIncidents} expenses={expenses} setExpenses={setExpenses} events={events} chores={chores} schedules={schedules} trainingProgress={trainingProgress} setTrainingProgress={setTrainingProgress} familyMsgs={familyMsgs} setFamilyMsgs={setFamilyMsgs} modal={modal} setModal={setModal} notify={notify} assignments={assignments} incidentPrompts={incidentPrompts} getAssignedClients={getAssignedClients} allUsers={allUsers} onReferCG={ap=>setCGApplicants(p=>[ap,...p])} onReferClient={ld=>setClientLeads(p=>[ld,...p])}/>
+      <CaregiverPortal user={user} clients={clients} caregivers={caregivers} careNotes={careNotes} setCareNotes={setCareNotes} incidents={incidents} setIncidents={setIncidents} expenses={expenses} setExpenses={setExpenses} events={events} chores={chores} setChores={setChores} schedules={schedules} trainingProgress={trainingProgress} setTrainingProgress={setTrainingProgress} familyMsgs={familyMsgs} setFamilyMsgs={setFamilyMsgs} modal={modal} setModal={setModal} notify={notify} assignments={assignments} incidentPrompts={incidentPrompts} getAssignedClients={getAssignedClients} allUsers={allUsers} onReferCG={ap=>setCGApplicants(p=>[ap,...p])} onReferClient={ld=>setClientLeads(p=>[ld,...p])}/>
     </div>
   </div></>;
 
@@ -3383,7 +3703,7 @@ export default function App(){
       {pg==="dash"&&<DashPage clients={clients} caregivers={caregivers} incidents={incidents} expenses={expenses} careNotes={careNotes} events={events} setEvents={setEvents} trainingProgress={trainingProgress} schedules={schedules} setSchedules={setSchedules} setPg={setPg} notify={notify}/>}
       {pg==="schedule"&&<SchedulePage schedules={schedules} setSchedules={setSchedules} clients={clients} caregivers={caregivers}/>}
       {pg==="clients"&&<ClientsPage clients={clients} setClients={setClients} sel={selClient} setSel={setSelClient} caregivers={caregivers} careNotes={careNotes} incidents={incidents} events={events} setEvents={setEvents} chores={chores} expenses={expenses} schedules={schedules} notify={notify} clientSync={clientSync}/>}
-      {pg==="care"&&<CarePage clients={clients} caregivers={caregivers} chores={chores} setChores={setChores} incidents={incidents} setIncidents={setIncidents} careNotes={careNotes} setCareNotes={setCareNotes} modal={modal} setModal={setModal}/>}
+      {pg==="care"&&<CarePage clients={clients} caregivers={caregivers} chores={chores} setChores={setChores} incidents={incidents} setIncidents={setIncidents} careNotes={careNotes} setCareNotes={setCareNotes} modal={modal} setModal={setModal} notify={notify} choreSync={choreSync}/>}
       {pg==="expenses"&&<ExpensesPage expenses={expenses} setExpenses={setExpenses} caregivers={caregivers} clients={clients}/>}
       {pg==="recon"&&<ReconPage entries={reconEntries} caregivers={caregivers} clients={clients}/>}
       {pg==="billing"&&<BillingPage invoices={invoices} setInvoices={setInvoices} clients={clients} caregivers={caregivers} rateCards={rateCards} billingPeriods={billingPeriods} setBillingPeriods={setBillingPeriods} schedules={schedules} expenses={expenses} referralBonuses={referralBonuses} setReferralBonuses={setReferralBonuses}/>}
@@ -3394,8 +3714,8 @@ export default function App(){
       {pg==="compliance"&&<CompliancePage items={compliance} setItems={setCompliance} caregivers={caregivers} clients={clients}/>}
       {pg==="training"&&<TrainingPage caregivers={caregivers} progress={trainingProgress} setProgress={setTrainingProgress} modal={modal} setModal={setModal}/>}
       {pg==="events"&&<EventsPage events={events} setEvents={setEvents} clients={clients}/>}
-      {pg==="portal"&&<ClientPortalPage clients={clients} caregivers={caregivers} notify={notify} assignments={assignments} sel={portalClient} setSel={setPortalClient} serviceRequests={serviceRequests} setServiceRequests={setServiceRequests} surveys={surveys} setSurveys={setSurveys} careGoals={careGoals} vitals={vitals} setVitals={setVitals} documents={documents} careNotes={careNotes} events={events} expenses={expenses} familyMsgs={familyMsgs} setFamilyMsgs={setFamilyMsgs} notifications={notifications} onReferCG={ap=>setCGApplicants(p=>[ap,...p])} onReferClient={ld=>setClientLeads(p=>[ld,...p])}/>}
-      {pg==="family"&&<FamilyPage clients={clients} familyMsgs={familyMsgs} setFamilyMsgs={setFamilyMsgs} careNotes={careNotes} incidents={incidents} events={events} moments={moments} setMoments={setMoments} caregivers={caregivers}/>}
+      {pg==="portal"&&<ClientPortalPage clients={clients} caregivers={caregivers} notify={notify} assignments={assignments} sel={portalClient} setSel={setPortalClient} serviceRequests={serviceRequests} setServiceRequests={setServiceRequests} surveys={surveys} setSurveys={setSurveys} careGoals={careGoals} vitals={vitals} setVitals={setVitals} documents={documents} careNotes={careNotes} events={events} expenses={expenses} familyMsgs={familyMsgs} setFamilyMsgs={setFamilyMsgs} notifications={notifications} chores={chores} setChores={setChores} onReferCG={ap=>setCGApplicants(p=>[ap,...p])} onReferClient={ld=>setClientLeads(p=>[ld,...p])}/>}
+      {pg==="family"&&<FamilyPage clients={clients} familyMsgs={familyMsgs} setFamilyMsgs={setFamilyMsgs} careNotes={careNotes} incidents={incidents} events={events} moments={moments} setMoments={setMoments} caregivers={caregivers} chores={chores} setChores={setChores} notify={notify}/>}
       {pg==="team"&&<TeamPage caregivers={caregivers} setCaregivers={setCaregivers} progress={trainingProgress} clients={clients} assignments={assignments} setAssignments={setAssignments} cgSync={cgSync}/>}
       {pg==="users"&&<UserManagementPage allUsers={allUsers} setAllUsers={setAllUsers}/>}
       {pg==="features"&&<FeatureManagementPage featureFlags={featureFlags} setFeatureFlags={setFeatureFlags} isFeatureEnabled={isFeatureEnabled} toggleFeature={toggleFeature} clients={clients} caregivers={caregivers} logAction={logAction}/>}
@@ -4000,6 +4320,7 @@ function ClientsPage({clients,setClients,sel,setSel,caregivers,careNotes,inciden
   const [form,setForm]=useState(emptyClient);
   const [dxInput,setDxInput]=useState("");
   const [medInput,setMedInput]=useState("");
+  const [medForm,setMedForm]=useState({name:"",dose:"",frequency:"",time:"",reason:"",photo:null});
 
   const activeClients=showArchived?clients:clients.filter(c=>c.status!=="archived");
   const archivedCount=clients.filter(c=>c.status==="archived").length;
@@ -4220,6 +4541,7 @@ create policy "anon update clients" on clients_store
           })}
           {editField==="meds"&& <button className="btn btn-sm btn-p" style={{marginTop:8}} onClick={()=>setEditMed({idx:-1,name:"",dose:"",frequency:"Once daily",time:"",reason:"",photo:null})}>+ Add Medication</button>}
           {(!cl.meds||cl.meds.length===0)&&<div className="empty">No medications on file</div>}
+          {cl.meds?.length>0&&<div style={{fontSize:10,color:"var(--t2)",marginTop:10,fontStyle:"italic",paddingTop:8,borderTop:"var(--border-thin)"}}>{PILL_PHOTO_DISCLAIMER}</div>}
         </div>
       </div>
 
@@ -4809,11 +5131,33 @@ create policy "anon update clients" on clients_store
           <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:6}}>{(form.dx||[]).map((d,i)=><span key={i} className="tag tag-bl" style={{cursor:"pointer"}} onClick={()=>setForm(p=>({...p,dx:p.dx.filter((_,j)=>j!==i)}))}>{d} ✕</span>)}</div>
           <div style={{display:"flex",gap:4}}><input value={dxInput} onChange={e=>setDxInput(e.target.value)} placeholder="Add diagnosis" onKeyDown={e=>{if(e.key==="Enter"&&dxInput.trim()){setForm(p=>({...p,dx:[...(p.dx||[]),dxInput.trim()]}));setDxInput("");}}} style={{flex:1}}/><button className="btn btn-sm btn-s" onClick={()=>{if(dxInput.trim()){setForm(p=>({...p,dx:[...(p.dx||[]),dxInput.trim()]}));setDxInput("");}}}>Add</button></div>
         </div>
-        {/* Medications */}
+        {/* Medications — structured editor */}
         <div style={{marginBottom:12}}>
           <label style={{fontSize:11,fontWeight:600,textTransform:"uppercase",letterSpacing:.5,display:"block",marginBottom:4}}>Medications</label>
-          <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:6}}>{(form.meds||[]).map((m,i)=><span key={i} className="tag tag-wn" style={{cursor:"pointer"}} onClick={()=>setForm(p=>({...p,meds:p.meds.filter((_,j)=>j!==i)}))}>{m} ✕</span>)}</div>
-          <div style={{display:"flex",gap:4}}><input value={medInput} onChange={e=>setMedInput(e.target.value)} placeholder="Add medication" onKeyDown={e=>{if(e.key==="Enter"&&medInput.trim()){setForm(p=>({...p,meds:[...(p.meds||[]),medInput.trim()]}));setMedInput("");}}} style={{flex:1}}/><button className="btn btn-sm btn-s" onClick={()=>{if(medInput.trim()){setForm(p=>({...p,meds:[...(p.meds||[]),medInput.trim()]}));setMedInput("");}}}>Add</button></div>
+          {/* Existing meds list */}
+          <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:8}}>{(form.meds||[]).map((m,i)=>{const med=normalizeMed(m);return <div key={i} style={{display:"flex",gap:8,alignItems:"center",padding:"8px 10px",background:"var(--bg)",border:"var(--border-thin)"}}>
+            {med.photo?<img src={med.photo} alt="Pill" style={{width:36,height:36,objectFit:"cover",border:"var(--border-thin)"}}/>:<div style={{width:36,height:36,fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>💊</div>}
+            <div style={{flex:1,fontSize:12}}><strong>{med.name}</strong>{med.dose?" — "+med.dose:""}<div style={{fontSize:10,color:"var(--t2)"}}>{[med.frequency,med.time,med.reason?"for "+med.reason:""].filter(Boolean).join(" • ")}</div></div>
+            <label className="btn btn-sm btn-s" style={{cursor:"pointer",fontSize:10}} title="Upload pill photo">📷<input type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>{const f=e.target.files[0];if(f){if(f.size>5*1024*1024){alert("Max 5MB");return;}const r=new FileReader();r.onload=ev=>setForm(p=>({...p,meds:p.meds.map((x,j)=>j===i?{...normalizeMed(x),photo:ev.target.result}:x)}));r.readAsDataURL(f);}}}/></label>
+            <button className="btn btn-sm btn-s" style={{color:"var(--err)"}} onClick={()=>setForm(p=>({...p,meds:p.meds.filter((_,j)=>j!==i)}))}>✕</button>
+          </div>;})}</div>
+          {/* New med entry */}
+          <div style={{padding:"10px",background:"var(--bg)",border:"var(--border-thin)"}}>
+            <div className="fg" style={{marginBottom:6}}>
+              <div className="fi"><input value={medForm.name} onChange={e=>setMedForm(p=>({...p,name:e.target.value}))} placeholder="Medication name *" style={{width:"100%"}}/></div>
+              <div className="fi"><input value={medForm.dose} onChange={e=>setMedForm(p=>({...p,dose:e.target.value}))} placeholder="Dose (e.g. 10mg)" style={{width:"100%"}}/></div>
+            </div>
+            <div className="fg" style={{marginBottom:6}}>
+              <div className="fi"><input value={medForm.frequency} onChange={e=>setMedForm(p=>({...p,frequency:e.target.value}))} placeholder="Frequency (e.g. Twice daily)" style={{width:"100%"}}/></div>
+              <div className="fi"><input value={medForm.time} onChange={e=>setMedForm(p=>({...p,time:e.target.value}))} placeholder="Time(s) (e.g. 08:00, 18:00)" style={{width:"100%"}}/></div>
+            </div>
+            <input value={medForm.reason} onChange={e=>setMedForm(p=>({...p,reason:e.target.value}))} placeholder="Reason (e.g. Blood pressure)" style={{width:"100%",marginBottom:6}}/>
+            <div style={{display:"flex",gap:6,alignItems:"center"}}>
+              <label className="btn btn-sm btn-s" style={{cursor:"pointer"}}>{medForm.photo?"✓ Photo added":"📷 Pill photo"}<input type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>{const f=e.target.files[0];if(f){if(f.size>5*1024*1024){alert("Max 5MB");return;}const r=new FileReader();r.onload=ev=>setMedForm(p=>({...p,photo:ev.target.result}));r.readAsDataURL(f);}}}/></label>
+              <button className="btn btn-sm btn-p" style={{marginLeft:"auto"}} disabled={!medForm.name.trim()} onClick={()=>{setForm(p=>({...p,meds:[...(p.meds||[]),{...medForm,name:medForm.name.trim()}]}));setMedForm({name:"",dose:"",frequency:"",time:"",reason:"",photo:null});}}>+ Add Medication</button>
+            </div>
+          </div>
+          <div style={{fontSize:10,color:"var(--t2)",marginTop:6,fontStyle:"italic"}}>{PILL_PHOTO_DISCLAIMER}</div>
         </div>
         <button className="btn btn-p" style={{width:"100%"}} disabled={!form.name?.trim()} onClick={()=>{
           if(showAdd){
@@ -4850,16 +5194,88 @@ create policy "anon update clients" on clients_store
 // ═══════════════════════════════════════════════════════════════════════
 // CARE MANAGEMENT
 // ═══════════════════════════════════════════════════════════════════════
-function CarePage({clients,caregivers,chores,setChores,incidents,setIncidents,careNotes,setCareNotes,modal,setModal}){
+function CarePage({clients,caregivers,chores,setChores,incidents,setIncidents,careNotes,setCareNotes,modal,setModal,notify,choreSync}){
   const [tab,setTab]=useState("tasks");
+  const [showCloudSetup,setShowCloudSetup]=useState(false);
+  const [showAddTask,setShowAddTask]=useState(false);
+  const emptyTask={title:"",clientId:"",assignedTo:"",frequency:"Every visit",priority:"routine",description:""};
+  const [taskForm,setTaskForm]=useState(emptyTask);
+  const [denyModal,setDenyModal]=useState(null); // chore pending denial
+  const [denyReason,setDenyReason]=useState("");
+  const pendingRequests=chores.filter(c=>c.approvalStatus==="pending");
+
+  const addTask=()=>{
+    setChores(p=>[{id:"CH"+uid(),clientId:taskForm.clientId,title:taskForm.title.trim(),description:taskForm.description.trim(),frequency:taskForm.frequency,priority:taskForm.priority,status:"active",lastDone:"",assignedTo:taskForm.assignedTo,comments:[],completions:[],approvalStatus:"approved",requestedBy:null},...p]);
+    if(taskForm.assignedTo&&notify)notify(taskForm.assignedTo,"task","New Task Assigned",`${taskForm.title} for ${clients.find(c=>c.id===taskForm.clientId)?.name}`,{});
+    setShowAddTask(false);setTaskForm(emptyTask);
+  };
+  const approveRequest=(ch)=>{
+    setChores(p=>p.map(c=>c.id===ch.id?{...c,approvalStatus:"approved"}:c));
+    if(ch.assignedTo&&notify)notify(ch.assignedTo,"task","New Task Assigned",`${ch.title} for ${clients.find(c=>c.id===ch.clientId)?.name} (approved from request)`,{});
+  };
+  const denyRequest=()=>{
+    setChores(p=>p.map(c=>c.id===denyModal.id?{...c,approvalStatus:"denied",denyReason:denyReason.trim()||"Not approved"}:c));
+    setDenyModal(null);setDenyReason("");
+  };
 
   return <div>
     <div className="hdr"><div><h2>Care Management</h2><div className="hdr-sub">Tasks, incidents, and case management</div></div>
-      <div style={{display:"flex",gap:8}}>
-        <button className="btn btn-p btn-sm" onClick={()=>setModal("note")}>📝 Care Note</button>
+      <div style={{display:"flex",gap:8,alignItems:"center"}}>
+        {(()=>{const map={loading:{t:"⏳ Loading…",c:"#6b7280"},saving:{t:"⏳ Saving…",c:"#0369a1"},saved:{t:"☁️ Saved",c:"#16a34a"},error:{t:"⚠️ Save failed",c:"#dc2626"},offline:{t:"⚙️ Set up cloud save",c:"#d97706"},idle:{t:"",c:""}};const s=map[choreSync]||map.idle;if(!s.t)return null;
+          return <button onClick={()=>setShowCloudSetup(true)} title="Tasks auto-save to your Supabase database" style={{fontSize:10,fontWeight:600,color:s.c,background:"none",border:"1px solid "+s.c+"55",padding:"4px 8px",cursor:"pointer",borderRadius:3}}>{s.t}</button>;
+        })()}
+        <button className="btn btn-p btn-sm" onClick={()=>{setTaskForm(emptyTask);setShowAddTask(true);}}>+ Add Task</button>
+        <button className="btn btn-s btn-sm" onClick={()=>setModal("note")}>📝 Care Note</button>
         <button className="btn btn-er btn-sm" onClick={()=>setModal("incident")}>⚠️ Incident</button>
       </div>
     </div>
+
+    {/* Cloud setup modal (tasks) */}
+    {showCloudSetup&&<div className="modal-bg" onClick={()=>setShowCloudSetup(false)}>
+      <div className="modal" style={{maxWidth:640,maxHeight:"92vh",overflow:"auto"}} onClick={e=>e.stopPropagation()}>
+        <div className="modal-h">☁️ Task Cloud Save — Setup<button className="btn btn-sm btn-s" onClick={()=>setShowCloudSetup(false)}>✕</button></div>
+        <div className="modal-b">
+          <div className="ai-card" style={{marginBottom:14}}><h4>Status: {choreSync==="saved"?"✅ Connected & saving":choreSync==="offline"?"⚙️ Not set up yet":choreSync==="error"?"⚠️ Save failing":"⏳ Working…"}</h4><p>Tasks, comments, and photo completions auto-save to your Supabase database. Run the SQL below once to enable permanent saving; until then tasks reset on reload.</p></div>
+          <div style={{fontSize:13,fontWeight:700,marginBottom:6}}>Run this once in Supabase → SQL Editor</div>
+          <pre style={{background:"#070707",color:"#7dd3fc",padding:"14px",fontSize:11,lineHeight:1.6,overflow:"auto",borderRadius:4,whiteSpace:"pre-wrap"}}>{`create table if not exists chores_store (
+  id text primary key,
+  data jsonb not null,
+  updated_at timestamptz default now()
+);
+
+alter table chores_store enable row level security;
+
+create policy "anon read chores" on chores_store
+  for select using (true);
+create policy "anon insert chores" on chores_store
+  for insert with check (true);
+create policy "anon update chores" on chores_store
+  for update using (true);`}</pre>
+          <button className="btn btn-sm btn-s" style={{marginTop:8,marginBottom:14}} onClick={()=>{navigator.clipboard?.writeText(`create table if not exists chores_store (\n  id text primary key,\n  data jsonb not null,\n  updated_at timestamptz default now()\n);\nalter table chores_store enable row level security;\ncreate policy "anon read chores" on chores_store for select using (true);\ncreate policy "anon insert chores" on chores_store for insert with check (true);\ncreate policy "anon update chores" on chores_store for update using (true);`);alert("SQL copied!");}}>📋 Copy SQL</button>
+          <div style={{padding:"10px 14px",background:"#fffbeb",border:"1px solid #fcd34d",fontSize:11,color:"#78350f",lineHeight:1.6,marginBottom:14}}><strong>⚠️ Note:</strong> Demo policies let the anon key read/write all tasks. Tighten to authenticated staff before production. Photo completions are stored as data inside the task record.</div>
+          <div style={{display:"flex",gap:6}}><a className="btn btn-p" href="https://supabase.com/dashboard/project/okvyhbypncctevvtwqkf/sql/new" target="_blank" rel="noopener noreferrer" style={{flex:1,justifyContent:"center",textDecoration:"none"}}>Open Supabase SQL Editor →</a><button className="btn btn-s" onClick={()=>setShowCloudSetup(false)}>Close</button></div>
+        </div>
+      </div>
+    </div>}
+
+    {/* Pending task requests from clients/family */}
+    {pendingRequests.length>0&&<div className="ai-card" style={{background:"linear-gradient(135deg,#3d2800,#1a1200)",marginBottom:14}}>
+      <h4><span className="pulse" style={{background:"var(--warn)"}}/>🔔 Task Requests Awaiting Your Approval ({pendingRequests.length})</h4>
+      <div style={{marginTop:10,display:"flex",flexDirection:"column",gap:8}}>
+        {pendingRequests.map(ch=>{const cl=clients.find(c=>c.id===ch.clientId);return <div key={ch.id} style={{background:"rgba(255,255,255,.08)",padding:"10px 12px",display:"flex",gap:10,alignItems:"flex-start"}}>
+          <div style={{flex:1}}>
+            <div style={{fontSize:13,fontWeight:600,color:"#fff"}}>{ch.title}</div>
+            <div style={{fontSize:11,color:"rgba(255,255,255,.7)"}}>{cl?.name} · requested by {ch.requestedBy||"family"}{ch.description?" — "+ch.description:""}</div>
+          </div>
+          <select value={ch.assignedTo||""} onChange={e=>setChores(p=>p.map(c=>c.id===ch.id?{...c,assignedTo:e.target.value}:c))} style={{fontSize:11,padding:"4px 6px"}}>
+            <option value="">Assign to…</option>
+            {caregivers.filter(c=>c.status==="active").map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+          <button className="btn btn-sm btn-ok" disabled={!ch.assignedTo} onClick={()=>approveRequest(ch)}>✓ Approve</button>
+          <button className="btn btn-sm btn-s" style={{color:"#fca5a5"}} onClick={()=>{setDenyModal(ch);setDenyReason("");}}>✕ Deny</button>
+        </div>;})}
+      </div>
+    </div>}
 
     {/* AI Case Agent */}
     <div className="ai-card">
@@ -4875,13 +5291,19 @@ function CarePage({clients,caregivers,chores,setChores,incidents,setIncidents,ca
       {["tasks","incidents","notes","agent"].map(t=><button key={t} className={`tab-btn ${tab===t?"act":""}`} onClick={()=>setTab(t)}>{({tasks:"📋 Tasks & Chores",incidents:"⚠️ Incidents",notes:"📝 Care Notes",agent:"🤖 Case Agent"})[t]}</button>)}
     </div>
 
-    {tab==="tasks"&&<div className="card"><div className="card-h"><h3>Active Tasks & Chores</h3></div>
-      <div className="tw"><table><thead><tr><th>Task</th><th>Client</th><th>Frequency</th><th>Assigned</th><th>Last Done</th><th>Priority</th><th>Status</th></tr></thead><tbody>
-        {chores.map(ch=>{const cl=clients.find(c=>c.id===ch.clientId);const cg=caregivers.find(c=>c.id===ch.assignedTo);
-          return <tr key={ch.id}><td style={{fontWeight:600}}>{ch.title}</td><td>{cl?.name}</td><td>{ch.frequency}</td><td>{cg?.name}</td><td>{fmtD(ch.lastDone)}</td>
+    {tab==="tasks"&&<div className="card"><div className="card-h"><h3>Active Tasks & Chores</h3><span style={{fontSize:11,color:"var(--t2)"}}>{chores.filter(c=>c.approvalStatus!=="denied"&&c.approvalStatus!=="pending").length} active</span></div>
+      <div className="tw"><table><thead><tr><th>Task</th><th>Client</th><th>Frequency</th><th>Assigned</th><th>Last Done</th><th>Activity</th><th>Priority</th><th>Status</th></tr></thead><tbody>
+        {chores.filter(c=>c.approvalStatus!=="pending"&&c.approvalStatus!=="denied").map(ch=>{const cl=clients.find(c=>c.id===ch.clientId);const cg=caregivers.find(c=>c.id===ch.assignedTo);
+          return <tr key={ch.id}><td style={{fontWeight:600}}>{ch.title}{ch.description&&<div style={{fontSize:10,color:"var(--t2)",fontWeight:400,maxWidth:220,whiteSpace:"normal"}}>{ch.description}</div>}</td><td>{cl?.name}</td><td>{ch.frequency}</td>
+            <td>{cg?.name||<span style={{color:"var(--err)"}}>Unassigned</span>}</td><td>{ch.lastDone?fmtD(ch.lastDone):"—"}</td>
+            <td style={{fontSize:11,color:"var(--t2)"}}>{(ch.completions||[]).length>0?`✅ ${ch.completions.length}`:""}{(ch.comments||[]).length>0?` 💬 ${ch.comments.length}`:""}{ch.requestedBy?` · req by ${ch.requestedBy}`:""}</td>
             <td><span className={`tag ${ch.priority==="high"?"tag-er":"tag-ok"}`}>{ch.priority}</span></td>
             <td><button className="btn btn-sm btn-ok" onClick={()=>setChores(p=>p.map(c=>c.id===ch.id?{...c,lastDone:today()}:c))}>✓ Done</button></td></tr>;})}
       </tbody></table></div>
+      {chores.filter(c=>c.approvalStatus==="denied").length>0&&<div style={{padding:"10px 18px",borderTop:"var(--border-thin)"}}>
+        <div style={{fontSize:11,fontWeight:700,color:"var(--t2)",marginBottom:6}}>Denied Requests</div>
+        {chores.filter(c=>c.approvalStatus==="denied").map(ch=>{const cl=clients.find(c=>c.id===ch.clientId);return <div key={ch.id} style={{fontSize:11,color:"var(--t2)",padding:"3px 0"}}>✕ {ch.title} ({cl?.name}) — {ch.denyReason} <button className="btn btn-sm btn-s" style={{marginLeft:6,fontSize:9,padding:"1px 6px"}} onClick={()=>setChores(p=>p.filter(c=>c.id!==ch.id))}>Remove</button></div>;})}
+      </div>}
     </div>}
 
     {tab==="incidents"&&<div className="card"><div className="card-h"><h3>Incident Reports</h3></div>
@@ -4938,6 +5360,34 @@ function CarePage({clients,caregivers,chores,setChores,incidents,setIncidents,ca
     {modal==="incident"&&<div className="modal-bg" onClick={()=>setModal(null)}><div className="modal" onClick={e=>e.stopPropagation()}>
       <div className="modal-h">⚠️ Incident Report<button className="btn btn-sm btn-s" onClick={()=>setModal(null)}>✕</button></div>
       <IncidentForm clients={clients} caregivers={caregivers} onSave={inc=>{setIncidents(p=>[{id:"IR"+uid(),...inc,date:now().toISOString(),status:"open"},...p]);setModal(null);}}/>
+    </div></div>}
+
+    {/* Add Task modal */}
+    {showAddTask&&<div className="modal-bg" onClick={()=>setShowAddTask(false)}><div className="modal" style={{maxWidth:480}} onClick={e=>e.stopPropagation()}>
+      <div className="modal-h">+ Add Task<button className="btn btn-sm btn-s" onClick={()=>setShowAddTask(false)}>✕</button></div>
+      <div className="modal-b">
+        <div className="fi" style={{marginBottom:10}}><label>Task Title *</label><input value={taskForm.title} onChange={e=>setTaskForm(p=>({...p,title:e.target.value}))} placeholder="e.g. Light housekeeping"/></div>
+        <div className="fg" style={{marginBottom:10}}>
+          <div className="fi"><label>Client</label><select value={taskForm.clientId} onChange={e=>setTaskForm(p=>({...p,clientId:e.target.value}))}><option value="">Select…</option>{clients.filter(c=>c.status==="active").map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+          <div className="fi"><label>Assign to Caregiver</label><select value={taskForm.assignedTo} onChange={e=>setTaskForm(p=>({...p,assignedTo:e.target.value}))}><option value="">Unassigned</option>{caregivers.filter(c=>c.status==="active").map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+        </div>
+        <div className="fg" style={{marginBottom:10}}>
+          <div className="fi"><label>Frequency</label><select value={taskForm.frequency} onChange={e=>setTaskForm(p=>({...p,frequency:e.target.value}))}><option>Every visit</option><option>Daily</option><option>2x/week</option><option>Weekly</option><option>Biweekly</option><option>Monthly</option><option>One-time</option></select></div>
+          <div className="fi"><label>Priority</label><select value={taskForm.priority} onChange={e=>setTaskForm(p=>({...p,priority:e.target.value}))}><option value="routine">Routine</option><option value="high">High</option></select></div>
+        </div>
+        <div className="fi" style={{marginBottom:14}}><label>Details / Instructions</label><textarea value={taskForm.description} onChange={e=>setTaskForm(p=>({...p,description:e.target.value}))} rows={3} style={{width:"100%"}} placeholder="Explain the task — what to do, preferences, special notes…"/></div>
+        <button className="btn btn-p" style={{width:"100%"}} disabled={!taskForm.title.trim()||!taskForm.clientId} onClick={addTask}>Add Task</button>
+      </div>
+    </div></div>}
+
+    {/* Deny request modal */}
+    {denyModal&&<div className="modal-bg" onClick={()=>setDenyModal(null)}><div className="modal" style={{maxWidth:420}} onClick={e=>e.stopPropagation()}>
+      <div className="modal-h">Deny Task Request<button className="btn btn-sm btn-s" onClick={()=>setDenyModal(null)}>✕</button></div>
+      <div className="modal-b">
+        <p style={{fontSize:13,marginBottom:10}}>Deny "<strong>{denyModal.title}</strong>"? The requester will see this was declined.</p>
+        <div className="fi" style={{marginBottom:14}}><label>Reason (shown to requester)</label><textarea value={denyReason} onChange={e=>setDenyReason(e.target.value)} rows={2} style={{width:"100%"}} placeholder="e.g. Outside scope of service / not covered by care plan"/></div>
+        <button className="btn btn-er" style={{width:"100%"}} onClick={denyRequest}>Confirm Deny</button>
+      </div>
     </div></div>}
   </div>;
 }
@@ -5323,10 +5773,12 @@ function TrainingPage({caregivers,progress,setProgress,modal,setModal}){
 // ═══════════════════════════════════════════════════════════════════════
 // CLIENT PORTAL — Full interactive client-facing experience
 // ═══════════════════════════════════════════════════════════════════════
-function ClientPortalPage({clients,caregivers,notify,assignments,sel,setSel,serviceRequests,setServiceRequests,surveys,setSurveys,careGoals,vitals,setVitals,documents,careNotes,events,expenses,familyMsgs,setFamilyMsgs,notifications,onReferCG,onReferClient}){
+function ClientPortalPage({clients,caregivers,notify,assignments,sel,setSel,serviceRequests,setServiceRequests,surveys,setSurveys,careGoals,vitals,setVitals,documents,careNotes,events,expenses,familyMsgs,setFamilyMsgs,notifications,chores,setChores,onReferCG,onReferClient}){
   const cl=clients.find(c=>c.id===sel)||clients[0];
   const [tab,setTab]=useState("home");
   const [showRequest,setShowRequest]=useState(false);
+  const [reqTaskTitle,setReqTaskTitle]=useState("");
+  const [reqTaskDetail,setReqTaskDetail]=useState("");
   const [showSurvey,setShowSurvey]=useState(false);
   const [showVital,setShowVital]=useState(false);
   const [msgText,setMsgText]=useState("");
@@ -5506,10 +5958,18 @@ function ClientPortalPage({clients,caregivers,notify,assignments,sel,setSel,serv
       </div>
 
       {/* Current Meds */}
-      <div className="card"><div className="card-h"><h3>Current Medications</h3><span className="tag tag-bl">{cl.meds.length} active</span></div>
-        <div className="card-b"><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:8}}>
-          {cl.meds.map((m,i)=> <div key={i} style={{padding:"10px 14px",background:"var(--bg)",borderRadius:"var(--rs)",fontSize:13,fontWeight:600,borderLeft:"3px solid var(--blue)"}}>{m}</div>)}
-        </div></div>
+      <div className="card"><div className="card-h"><h3>Current Medications</h3><span className="tag tag-bl">{cl.meds?.length||0} active</span></div>
+        <div className="card-b"><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:8}}>
+          {(cl.meds||[]).map((m,i)=>{const med=normalizeMed(m);return <div key={i} style={{padding:"10px 14px",background:"var(--bg)",borderRadius:"var(--rs)",borderLeft:"3px solid var(--blue)",display:"flex",gap:10,alignItems:"flex-start"}}>
+            {med.photo?<img src={med.photo} alt="Pill" style={{width:40,height:40,objectFit:"cover",border:"var(--border-thin)",cursor:"pointer"}} onClick={()=>window.open(med.photo,"_blank")}/>:<div style={{width:40,height:40,fontSize:18,display:"flex",alignItems:"center",justifyContent:"center"}}>💊</div>}
+            <div style={{flex:1}}><div style={{fontSize:13,fontWeight:700}}>{med.name}{med.dose?" — "+med.dose:""}</div>
+            <div style={{fontSize:11,color:"var(--t2)"}}>{[med.frequency,med.time].filter(Boolean).join(" • ")}</div>
+            {med.reason&&<div style={{fontSize:11,color:"var(--t2)",fontStyle:"italic"}}>For: {med.reason}</div>}</div>
+          </div>;})}
+          {(!cl.meds||cl.meds.length===0)&&<div className="empty">No medications on file</div>}
+        </div>
+        {cl.meds?.length>0&&<div style={{fontSize:10,color:"var(--t2)",marginTop:10,fontStyle:"italic"}}>{PILL_PHOTO_DISCLAIMER}</div>}
+        </div>
       </div>
 
       {/* Vitals History */}
@@ -5596,6 +6056,28 @@ function ClientPortalPage({clients,caregivers,notify,assignments,sel,setSel,serv
 
     {/* ═══ REQUESTS ═══ */}
     {tab==="requests"&& <div>
+      {/* Request a Task — goes to admin for approval before reaching caregiver */}
+      <div className="card card-b" style={{marginBottom:14}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+          <h3 style={{fontFamily:"var(--fd)",fontSize:16}}>📋 Request a Task</h3>
+          <span className="tag tag-wn">Needs admin approval</span>
+        </div>
+        <div style={{fontSize:12,color:"var(--t2)",marginBottom:10}}>Ask for something specific to be done during your care visits. CWIN reviews each request before assigning it to your caregiver.</div>
+        <input value={reqTaskTitle} onChange={e=>setReqTaskTitle(e.target.value)} placeholder="What would you like done? (e.g. Water the plants)" style={{width:"100%",padding:"8px 12px",border:"1px solid var(--bdr)",fontSize:13,marginBottom:8,fontFamily:"var(--f)"}}/>
+        <textarea value={reqTaskDetail} onChange={e=>setReqTaskDetail(e.target.value)} placeholder="Any details or instructions (optional)" rows={2} style={{width:"100%",padding:"8px 12px",border:"1px solid var(--bdr)",fontSize:13,marginBottom:8,fontFamily:"var(--f)"}}/>
+        <button className="btn btn-p btn-sm" disabled={!reqTaskTitle.trim()} onClick={()=>{
+          setChores(p=>[{id:"CH"+uid(),clientId:cl.id,title:reqTaskTitle.trim(),description:reqTaskDetail.trim(),frequency:"One-time",priority:"routine",status:"active",lastDone:"",assignedTo:"",comments:[],completions:[],approvalStatus:"pending",requestedBy:cl.name+" (client)"},...p]);
+          if(notify){notify("U1","task","Task Request",cl.name+" requested: "+reqTaskTitle.trim(),{});notify("U2","task","Task Request",cl.name+" requested: "+reqTaskTitle.trim(),{});}
+          setReqTaskTitle("");setReqTaskDetail("");
+        }}>Submit Task Request</button>
+        {(chores||[]).filter(c=>c.clientId===cl.id&&c.requestedBy).length>0&&<div style={{marginTop:12,borderTop:"var(--border-thin)",paddingTop:10}}>
+          {(chores||[]).filter(c=>c.clientId===cl.id&&c.requestedBy).map(r=><div key={r.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",fontSize:12}}>
+            <div><strong>{r.title}</strong>{r.approvalStatus==="denied"&&r.denyReason&&<div style={{fontSize:11,color:"var(--err)"}}>Declined: {r.denyReason}</div>}</div>
+            <span className={`tag ${r.approvalStatus==="approved"?"tag-ok":r.approvalStatus==="denied"?"tag-er":"tag-wn"}`}>{r.approvalStatus==="approved"?"✓ Approved":r.approvalStatus==="denied"?"Declined":"Pending"}</span>
+          </div>)}
+        </div>}
+      </div>
+
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
         <h3 style={{fontFamily:"var(--fd)",fontSize:16}}>Service Requests</h3>
         <button className="btn btn-p btn-sm" onClick={()=>setShowRequest(true)}>+ New Request</button>
@@ -6055,11 +6537,13 @@ function EventsPage({events,setEvents,clients}){
 // ═══════════════════════════════════════════════════════════════════════
 // FAMILY PORTAL
 // ═══════════════════════════════════════════════════════════════════════
-function FamilyPage({clients,familyMsgs,setFamilyMsgs,careNotes,incidents,events,moments,setMoments,caregivers}){
+function FamilyPage({clients,familyMsgs,setFamilyMsgs,careNotes,incidents,events,moments,setMoments,caregivers,chores,setChores,notify}){
   const [selClient,setSelClient]=useState("CL2");
   const [msg,setMsg]=useState("");
   const [momentCaption,setMomentCaption]=useState("");
   const [momentPhoto,setMomentPhoto]=useState(null);
+  const [reqTitle,setReqTitle]=useState("");
+  const [reqDetail,setReqDetail]=useState("");
   const cl=clients.find(c=>c.id===selClient);
   const msgs=familyMsgs.filter(m=>m.clientId===selClient).sort((a,b)=>new Date(a.date)-new Date(b.date));
   const contacts=cl?.familyPortal?.contacts||[];
@@ -6067,6 +6551,14 @@ function FamilyPage({clients,familyMsgs,setFamilyMsgs,careNotes,incidents,events
   const clInc=incidents.filter(i=>i.clientId===selClient&&i.familyNotified);
   const clEvents=events.filter(e=>e.clientId===selClient&&new Date(e.date)>=now());
   const clMoments=(moments||[]).filter(m=>m.clientId===selClient).sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const myRequests=(chores||[]).filter(c=>c.clientId===selClient&&c.requestedBy);
+
+  const requestTask=()=>{
+    if(!reqTitle.trim())return;
+    setChores(p=>[{id:"CH"+uid(),clientId:selClient,title:reqTitle.trim(),description:reqDetail.trim(),frequency:"One-time",priority:"routine",status:"active",lastDone:"",assignedTo:"",comments:[],completions:[],approvalStatus:"pending",requestedBy:contacts[0]?.name||"Family"}, ...p]);
+    if(notify){notify("U1","task","Task Request","Family requested: "+reqTitle.trim()+" for "+cl?.name,{});notify("U2","task","Task Request","Family requested: "+reqTitle.trim()+" for "+cl?.name,{});}
+    setReqTitle("");setReqDetail("");
+  };
 
   const sendMsg=()=>{if(!msg.trim())return;setFamilyMsgs(p=>[...p,{id:"FM"+uid(),clientId:selClient,from:"CWIN Care Team",fromType:"caregiver",date:now().toISOString(),text:msg}]);setMsg("");};
   const shareMoment=()=>{
@@ -6108,6 +6600,23 @@ function FamilyPage({clients,familyMsgs,setFamilyMsgs,careNotes,incidents,events
               </div>
             </div>
           </div>;})}
+        </div>
+
+        {/* Request a Task */}
+        <div className="card">
+          <div className="card-h"><h3>📋 Request a Task</h3><span className="tag tag-wn">Needs admin approval</span></div>
+          <div style={{padding:"14px 18px"}}>
+            <div style={{fontSize:12,color:"var(--t2)",marginBottom:10}}>Request something for {cl?.name}'s care. CWIN admin reviews every request before it's assigned to a caregiver.</div>
+            <input value={reqTitle} onChange={e=>setReqTitle(e.target.value)} placeholder="What would you like done? (e.g. Water the plants)" style={{width:"100%",padding:"8px 12px",border:"1px solid var(--bdr)",fontSize:13,marginBottom:8,fontFamily:"var(--f)"}}/>
+            <textarea value={reqDetail} onChange={e=>setReqDetail(e.target.value)} placeholder="Any details or instructions (optional)" rows={2} style={{width:"100%",padding:"8px 12px",border:"1px solid var(--bdr)",fontSize:13,marginBottom:8,fontFamily:"var(--f)"}}/>
+            <button className="btn btn-p btn-sm" onClick={requestTask} disabled={!reqTitle.trim()}>Submit Request</button>
+          </div>
+          {myRequests.length>0&&<div style={{borderTop:"1px solid var(--bdr)"}}>
+            {myRequests.map(r=><div key={r.id} style={{padding:"10px 18px",borderBottom:"1px solid var(--bdr)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div><div style={{fontSize:13,fontWeight:600}}>{r.title}</div>{r.description&&<div style={{fontSize:11,color:"var(--t2)"}}>{r.description}</div>}{r.approvalStatus==="denied"&&r.denyReason&&<div style={{fontSize:11,color:"var(--err)"}}>Declined: {r.denyReason}</div>}</div>
+              <span className={`tag ${r.approvalStatus==="approved"?"tag-ok":r.approvalStatus==="denied"?"tag-er":"tag-wn"}`}>{r.approvalStatus==="approved"?"✓ Approved":r.approvalStatus==="denied"?"Declined":"Pending"}</span>
+            </div>)}
+          </div>}
         </div>
 
         {/* Authorized Contacts */}
@@ -7345,20 +7854,24 @@ function EMARPage({medRecords,setMedRecords,clients,caregivers,notify}){
         <button className="btn btn-sm btn-s" onClick={()=>{setSchedForm({medName:"",dose:"",scheduledTime:"08:00",route:"Oral"});setShowAddSched(true);}}>+ Log PRN / Other</button>
       </div>
       {clMeds.length===0?<div className="empty">No medications on file for {cl.name}.</div>:
-      clMeds.map((med,i)=>{
-        const rec=todayRecords.find(r=>r.medName===med);
+      clMeds.map((m,i)=>{
+        const med=normalizeMed(m);
+        const label=med.name+(med.dose?" "+med.dose:"");
+        const rec=todayRecords.find(r=>r.medName===label||r.medName===med.name);
         return <div key={i} style={{padding:"14px 18px",borderBottom:"var(--border-thin)",display:"flex",gap:14,alignItems:"center"}}>
-          <div style={{fontSize:28}}>💊</div>
+          {med.photo?<img src={med.photo} alt="Pill" style={{width:40,height:40,objectFit:"cover",border:"var(--border-thin)"}}/>:<div style={{fontSize:28}}>💊</div>}
           <div style={{flex:1}}>
-            <div style={{fontWeight:600,fontSize:14}}>{med}</div>
+            <div style={{fontWeight:600,fontSize:14}}>{label}</div>
+            <div style={{fontSize:10,color:"var(--t2)"}}>{[med.frequency,med.time,med.reason?"for "+med.reason:""].filter(Boolean).join(" • ")}</div>
             {rec?<div style={{fontSize:11,marginTop:2}}>
               <span className={`tag ${rec.status==="given"?"tag-ok":rec.status==="refused"?"tag-wn":rec.status==="missed"?"tag-er":"tag-bl"}`}>{rec.status==="given"?`✅ Given ${rec.administeredAt}`:rec.status==="refused"?"🚫 Refused":rec.status==="missed"?"⚠️ Missed":"⏸ Held"}</span>
               {rec.administeredBy&&<span style={{color:"var(--t2)",marginLeft:8}}>by {caregivers.find(c=>c.id===rec.administeredBy)?.name}</span>}
             </div>:<div style={{fontSize:11,color:"var(--t2)",marginTop:2}}>Not yet logged today</div>}
           </div>
-          {!rec&&<button className="btn btn-sm btn-p" onClick={()=>{setLogModal({clientId:selClient,medName:med,dose:"",scheduledTime:"08:00",route:"Oral"});setLogForm({status:"given",administeredBy:caregivers[0]?.id||"",notes:""});}}>Log</button>}
+          {!rec&&<button className="btn btn-sm btn-p" onClick={()=>{setLogModal({clientId:selClient,medName:label,dose:med.dose||"",scheduledTime:med.time||"08:00",route:"Oral"});setLogForm({status:"given",administeredBy:caregivers[0]?.id||"",notes:""});}}>Log</button>}
         </div>;
       })}
+      {clMeds.length>0&&<div style={{fontSize:10,color:"var(--t2)",padding:"8px 18px",fontStyle:"italic"}}>{PILL_PHOTO_DISCLAIMER}</div>}
     </div>
 
     {/* Today's MAR grid */}
@@ -10013,7 +10526,7 @@ function BillingPage({invoices,setInvoices,clients,caregivers,rateCards,billingP
             <div className="tw" style={{marginBottom:14}}><table style={{fontSize:11}}>
               <thead><tr style={{background:"#e8e8e8"}}><th style={{width:90}}>Day</th><th style={{width:85}}>Date</th><th>Description</th><th style={{width:75}}>Sign IN</th><th style={{width:75}}>Sign OUT</th><th style={{width:55,textAlign:"center"}}>Hours</th><th style={{width:55,textAlign:"right"}}>Rate</th><th style={{width:75,textAlign:"right"}}>Total</th></tr></thead>
               <tbody>
-                {weeks.map((wk,wi)=><React.Fragment key={wi}>
+                {weeks.map((wk,wi)=>{const wkHrs=wk.days.reduce((s,d)=>s+(d.hasVisit?(d.line?.hours||0):0),0);const wkTotal=wk.days.reduce((s,d)=>s+(d.hasVisit?(d.line?.total||0):0),0);return <React.Fragment key={wi}>
                   <tr><td colSpan={8} style={{background:"#e8e8e8",fontWeight:700,fontSize:10,padding:"4px 8px"}}>Week {wk.num}</td></tr>
                   {wk.days.map((d,di)=>{const l=d.line;return <tr key={di} style={{background:d.hasVisit?"#fff":"#fafafa"}}>
                     <td style={{fontWeight:600}}>{d.day}</td>
@@ -10025,7 +10538,8 @@ function BillingPage({invoices,setInvoices,clients,caregivers,rateCards,billingP
                     <td style={{textAlign:"right"}}>{rate.toFixed(2)}</td>
                     <td style={{textAlign:"right",fontWeight:d.hasVisit?600:400}}>{d.hasVisit?"$ "+(l?.total||0).toFixed(2):"$ -"}</td>
                   </tr>;})}
-                </React.Fragment>)}
+                  <tr style={{background:"#f6f6f6",fontWeight:600,fontSize:11}}><td colSpan={5} style={{textAlign:"right",fontStyle:"italic"}}>Week {wk.num} Total</td><td style={{textAlign:"center"}}>{fmtHrs(wkHrs)}</td><td></td><td style={{textAlign:"right"}}>$ {wkTotal.toFixed(2)}</td></tr>
+                </React.Fragment>;})}
                 <tr style={{background:"#f0f0f0",fontWeight:700}}><td colSpan={5} style={{textAlign:"right"}}>Total Hrs.</td><td style={{textAlign:"center"}}>{fmtHrs(sortedLines.reduce((s,l)=>s+(l.hours||0),0))}</td><td></td><td style={{textAlign:"right",fontSize:13}}>$ {(sel.subtotal||0).toFixed(2)}</td></tr>
               </tbody>
             </table></div>
@@ -10095,10 +10609,12 @@ function BillingPage({invoices,setInvoices,clients,caregivers,rateCards,billingP
     {showGen&& <div className="modal-bg" onClick={()=>setShowGen(false)}><div className="modal" onClick={e=>e.stopPropagation()}>
       <div className="modal-h">Generate Invoice<button className="btn btn-sm btn-s" onClick={()=>setShowGen(false)}>✕</button></div>
       <div className="modal-b">
-        <div className="fg" style={{marginBottom:14}}>
-          <div className="fi"><label>Client</label><select value={genClient} onChange={e=>setGenClient(e.target.value)}><option value="">Select client</option>{clients.filter(c=>c.status==="active").map(c=> <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
-          <div className="fi"><label>Billing Period</label><select value={genPeriod} onChange={e=>setGenPeriod(e.target.value)}>{billingPeriods.map(bp=> <option key={bp.id} value={bp.id}>{bp.label}</option>)}</select></div>
+        <div style={{fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:.5,color:"var(--t2)",marginBottom:6}}>Step 1 — Choose who to bill</div>
+        <div className="fi" style={{marginBottom:10}}><label>Client *</label><select value={genClient} onChange={e=>setGenClient(e.target.value)}><option value="">— Select a client —</option>{clients.filter(c=>c.status==="active").map(c=> <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+          <div style={{fontSize:10,color:"var(--t2)",marginTop:4}}>Don't see them? Add the client first in <strong>Operations → Client Profiles → + Add Client</strong>, then return here.</div>
         </div>
+        <div style={{fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:.5,color:"var(--t2)",marginBottom:6}}>Step 2 — Billing period</div>
+        <div className="fi" style={{marginBottom:14}}><label>Billing Period</label><select value={genPeriod} onChange={e=>setGenPeriod(e.target.value)}>{billingPeriods.map(bp=> <option key={bp.id} value={bp.id}>{bp.label}</option>)}</select></div>
         {genClient&& <div style={{padding:12,background:"var(--bg)",marginBottom:14,fontSize:12}}>
           <div><strong>Rate:</strong> ${rateCards.find(r=>r.clientId===genClient)?.billRate||35}/hr</div>
           <div><strong>Shifts found:</strong> {(schedules||[]).filter(s=>s.clientId===genClient&&billingPeriods.find(b=>b.id===genPeriod)&&s.date>=billingPeriods.find(b=>b.id===genPeriod).start&&s.date<=billingPeriods.find(b=>b.id===genPeriod).end).length}</div>
@@ -10447,10 +10963,12 @@ function PayrollPage({paySlips,setPaySlips,caregivers,clients,payCards,billingPe
     {showGen&& <div className="modal-bg" onClick={()=>setShowGen(false)}><div className="modal" onClick={e=>e.stopPropagation()}>
       <div className="modal-h">Generate Pay Slip<button className="btn btn-sm btn-s" onClick={()=>setShowGen(false)}>✕</button></div>
       <div className="modal-b">
-        <div className="fg" style={{marginBottom:14}}>
-          <div className="fi"><label>Caregiver</label><select value={genCG} onChange={e=>setGenCG(e.target.value)}><option value="">Select</option>{caregivers.filter(c=>c.status==="active").map(c=> <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
-          <div className="fi"><label>Pay Period</label><select value={genPeriod} onChange={e=>setGenPeriod(e.target.value)}>{billingPeriods.map(bp=> <option key={bp.id} value={bp.id}>{bp.label}</option>)}</select></div>
+        <div style={{fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:.5,color:"var(--t2)",marginBottom:6}}>Step 1 — Choose the caregiver to pay</div>
+        <div className="fi" style={{marginBottom:10}}><label>Caregiver *</label><select value={genCG} onChange={e=>setGenCG(e.target.value)}><option value="">— Select a caregiver —</option>{caregivers.filter(c=>c.status==="active").map(c=> <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+          <div style={{fontSize:10,color:"var(--t2)",marginTop:4}}>Don't see them? Add the caregiver first in <strong>Connections → Team</strong> (or hire via Recruiting), then return here.</div>
         </div>
+        <div style={{fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:.5,color:"var(--t2)",marginBottom:6}}>Step 2 — Pay period</div>
+        <div className="fi" style={{marginBottom:14}}><label>Pay Period</label><select value={genPeriod} onChange={e=>setGenPeriod(e.target.value)}>{billingPeriods.map(bp=> <option key={bp.id} value={bp.id}>{bp.label}</option>)}</select></div>
         {genCG&& <div style={{padding:12,background:"var(--bg)",marginBottom:14,fontSize:12}}>
           <div><strong>Pay rate:</strong> ${payCards.find(p=>p.caregiverId===genCG)?.payRate||20}/hr</div>
           <div><strong>Type:</strong> {payCards.find(p=>p.caregiverId===genCG)?.type==="contractor"?"1099 Contractor":"W-2 Employee"}</div>
@@ -10721,7 +11239,7 @@ function AIHub({clients,caregivers,careNotes,incidents,expenses,schedules,rateCa
       <div className="fg" style={{marginBottom:14}}>
         <div className="fi"><label>Select client</label><select value={selClient} onChange={e=>setSelClient(e.target.value)}>{clients.filter(c=>c.status==="active").map(c=> <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
       </div>
-      <button className="btn btn-p" style={{marginBottom:14}} onClick={()=>{const cl=clients.find(c=>c.id===selClient);if(!cl)return;callAI(`Generate a personalized home care plan for this client:\nName: ${cl.name}, Age: ${cl.age}\nDiagnoses: ${cl.dx?.join(", ")}\nMedications: ${cl.meds?.join(", ")}\nADL Status: ${Object.entries(cl.adl||{}).map(([k,v])=>`${k}: ${v.split(" — ")[0]}`).join(", ")}\nRisk Level: ${cl.riskLevel}\nInterests: ${cl.social?.interests?.join(", ")}\n\nGenerate a care plan with: 1) Goals (measurable), 2) Interventions per goal, 3) Recommended visit frequency and hours, 4) Required caregiver skills/certifications, 5) Social engagement recommendations. Format with clear headers.`);}} disabled={apiLoading}>{apiLoading?"Generating...":"Generate AI Care Plan"}</button>
+      <button className="btn btn-p" style={{marginBottom:14}} onClick={()=>{const cl=clients.find(c=>c.id===selClient);if(!cl)return;callAI(`Generate a personalized home care plan for this client:\nName: ${cl.name}, Age: ${cl.age}\nDiagnoses: ${cl.dx?.join(", ")}\nMedications: ${(cl.meds||[]).map(m=>{const md=normalizeMed(m);return md.name+(md.dose?" "+md.dose:"")+(md.frequency?" ("+md.frequency+")":"");}).join(", ")}\nADL Status: ${Object.entries(cl.adl||{}).map(([k,v])=>`${k}: ${v.split(" — ")[0]}`).join(", ")}\nRisk Level: ${cl.riskLevel}\nInterests: ${cl.social?.interests?.join(", ")}\n\nGenerate a care plan with: 1) Goals (measurable), 2) Interventions per goal, 3) Recommended visit frequency and hours, 4) Required caregiver skills/certifications, 5) Social engagement recommendations. Format with clear headers.`);}} disabled={apiLoading}>{apiLoading?"Generating...":"Generate AI Care Plan"}</button>
       {apiResult&& <div className="card card-b" style={{whiteSpace:"pre-wrap",fontSize:12,lineHeight:1.8}}>{apiResult}</div>}
     </div>}
 
