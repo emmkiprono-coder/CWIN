@@ -229,6 +229,118 @@ async function sbSaveChoresBulk(arr){
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+// REAL AUTHENTICATION (Supabase Auth)
+// Email/password accounts with hashed passwords, managed in Supabase.
+// After sign-in, all REST calls carry the user's JWT so Row Level Security
+// can enforce access at the database — not just in the UI.
+// ═══════════════════════════════════════════════════════════════════════
+// ⚠️ SET TO false BEFORE GOING LIVE. While true, the old demo PIN logins
+// still work as a fallback (clearly flagged in the UI as insecure).
+const ALLOW_DEMO_LOGIN=true;
+
+let sbSession=null;
+function sbSetSession(sess){
+  sbSession=sess;
+  // All subsequent REST calls use the user's JWT (or fall back to anon key)
+  sbHeaders.Authorization="Bearer "+(sess?.access_token||SB_KEY);
+  try{
+    if(typeof localStorage!=="undefined"){
+      if(sess)localStorage.setItem("cwin_session",JSON.stringify({refresh_token:sess.refresh_token}));
+      else localStorage.removeItem("cwin_session");
+    }
+  }catch(e){/* storage unavailable (artifact preview) — session lives in memory only */}
+}
+async function sbSignIn(email,password){
+  try{
+    const r=await fetch(SB_URL+"/auth/v1/token?grant_type=password",{
+      method:"POST",headers:{apikey:SB_KEY,"Content-Type":"application/json"},
+      body:JSON.stringify({email,password})
+    });
+    const d=await r.json();
+    if(!r.ok)return{error:d.error_description||d.msg||d.error||"Sign-in failed"};
+    sbSetSession(d);
+    return{session:d,user:d.user};
+  }catch(e){return{error:"Network error — check your connection."};}
+}
+async function sbRefreshSession(){
+  try{
+    let stored=null;
+    try{stored=typeof localStorage!=="undefined"?JSON.parse(localStorage.getItem("cwin_session")||"null"):null;}catch(e){}
+    const rt=sbSession?.refresh_token||stored?.refresh_token;
+    if(!rt)return null;
+    const r=await fetch(SB_URL+"/auth/v1/token?grant_type=refresh_token",{
+      method:"POST",headers:{apikey:SB_KEY,"Content-Type":"application/json"},
+      body:JSON.stringify({refresh_token:rt})
+    });
+    if(!r.ok){sbSetSession(null);return null;}
+    const d=await r.json();
+    sbSetSession(d);
+    return d;
+  }catch(e){return null;}
+}
+async function sbSignOut(){
+  try{
+    if(sbSession?.access_token){
+      await fetch(SB_URL+"/auth/v1/logout",{method:"POST",headers:{apikey:SB_KEY,Authorization:"Bearer "+sbSession.access_token}});
+    }
+  }catch(e){/* best effort */}
+  sbSetSession(null);
+}
+async function sbRecoverPassword(email){
+  try{
+    const r=await fetch(SB_URL+"/auth/v1/recover",{
+      method:"POST",headers:{apikey:SB_KEY,"Content-Type":"application/json"},
+      body:JSON.stringify({email})
+    });
+    return r.ok;
+  }catch(e){return false;}
+}
+// Profile: links an auth account to a CWIN role (owner/admin/caregiver/client/family)
+async function sbGetMyProfile(userId){
+  try{
+    const r=await fetch(SB_URL+"/rest/v1/user_profiles?id=eq."+encodeURIComponent(userId)+"&select=*",{headers:sbHeaders});
+    if(!r.ok)return{error:"no_table"};
+    const rows=await r.json();
+    return{profile:rows[0]||null};
+  }catch(e){return{error:"network"};}
+}
+async function sbCreateMyProfile(p){
+  try{
+    const r=await fetch(SB_URL+"/rest/v1/user_profiles",{
+      method:"POST",headers:{...sbHeaders,"Content-Type":"application/json","Prefer":"return=minimal"},
+      body:JSON.stringify(p)
+    });
+    return r.ok;
+  }catch(e){return false;}
+}
+// After auth succeeds, resolve the app user (role, links) for this email.
+// Order: saved profile → known-email directory (USERS) → pending.
+async function resolveAuthedUser(authUser){
+  const email=(authUser?.email||"").toLowerCase();
+  const dir=USERS.find(u=>u.email.toLowerCase()===email);
+  const{profile,error}=await sbGetMyProfile(authUser.id);
+  if(profile){
+    if(profile.role==="pending")return{pending:true};
+    const dirMatch=USERS.find(u=>u.email.toLowerCase()===(profile.email||"").toLowerCase());
+    return{user:{id:dirMatch?.id||authUser.id,authId:authUser.id,email:profile.email,name:profile.name||dirMatch?.name||email,role:profile.role,avatar:dirMatch?.avatar||(profile.name||email).split(" ").map(n=>n[0]).join("").toUpperCase().slice(0,2),phone:dirMatch?.phone||"",title:dirMatch?.title||profile.role,caregiverId:profile.caregiver_id||dirMatch?.caregiverId,clientId:profile.client_id||dirMatch?.clientId,active:true,real:true}};
+  }
+  if(error==="no_table"){
+    // user_profiles table not created yet — fall back to the email directory.
+    // The PASSWORD was still verified by Supabase Auth; only the role comes from the directory.
+    if(dir)return{user:{...dir,authId:authUser.id,real:true,noProfileTable:true}};
+    return{pending:true,noProfileTable:true};
+  }
+  // Table exists but no profile yet — bootstrap from directory if the email is known
+  if(dir){
+    await sbCreateMyProfile({id:authUser.id,email:dir.email,name:dir.name,role:dir.role,caregiver_id:dir.caregiverId||null,client_id:dir.clientId||null});
+    return{user:{...dir,authId:authUser.id,real:true}};
+  }
+  // Unknown email — create a pending profile for the admin to approve
+  await sbCreateMyProfile({id:authUser.id,email,name:authUser.user_metadata?.name||email,role:"pending"});
+  return{pending:true};
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 // STATUS DEFINITIONS — Every status used across the platform
 // ═══════════════════════════════════════════════════════════════════════
 const STATUS_DEFS={
@@ -1059,6 +1171,57 @@ function normalizeMed(m){
   return {name:s,dose:"",frequency:"",time:"",reason:"",photo:null};
 }
 const PILL_PHOTO_DISCLAIMER="Pill images are a visual aid only and may change based on the pharmacy or manufacturer. Always verify medication by the label, not appearance.";
+
+// ─── CALENDAR INVITE HELPERS (shared across all portals) ────────────
+// Events store date as an ISO datetime ("2026-03-14T14:00:00"). These
+// helpers build .ics files and Google/Outlook/Yahoo "add event" links so a
+// client or family member can drop an appointment onto their own calendar.
+function _evStart(ev){
+  // Returns a Date for the event start, handling datetime or date+time fields
+  if(ev.date&&ev.date.includes("T"))return new Date(ev.date);
+  const t=ev.time||"09:00";
+  return new Date((ev.date||"")+"T"+t+":00");
+}
+function _evEnd(ev){
+  const start=_evStart(ev);
+  if(ev.endTime&&ev.date){const d=ev.date.slice(0,10);return new Date(d+"T"+ev.endTime+":00");}
+  // default: 1 hour after start
+  return new Date(start.getTime()+60*60000);
+}
+function _icsStamp(d){
+  // Local time as floating ICS timestamp YYYYMMDDTHHMMSS
+  const p=n=>String(n).padStart(2,"0");
+  return `${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}T${p(d.getHours())}${p(d.getMinutes())}00`;
+}
+function _escIcs(s){return (s||"").replace(/\\/g,"\\\\").replace(/;/g,"\\;").replace(/,/g,"\\,").replace(/\n/g,"\\n");}
+function eventTitleWithClient(ev,clientName){
+  return `${ev.type==="medical"?"🏥 ":""}${ev.title}${clientName?" — "+clientName:""}`;
+}
+function downloadEventIcs(ev,clientName){
+  const start=_evStart(ev),end=_evEnd(ev);
+  const summary=_escIcs(eventTitleWithClient(ev,clientName));
+  const desc=_escIcs(`Type: ${ev.type||"appointment"}\n${clientName?"Client: "+clientName+"\n":""}${ev.notes||""}\n\nManaged by CWIN At Home`);
+  const loc=_escIcs(ev.location||"");
+  let recur="";
+  if(ev.recurring==="weekly")recur="\nRRULE:FREQ=WEEKLY";
+  else if(ev.recurring==="monthly")recur="\nRRULE:FREQ=MONTHLY";
+  const alarm="\nBEGIN:VALARM\nACTION:DISPLAY\nDESCRIPTION:Reminder\nTRIGGER:-PT24H\nEND:VALARM";
+  const ics=`BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//CWIN At Home//Care Calendar//EN\nCALSCALE:GREGORIAN\nMETHOD:PUBLISH\nBEGIN:VEVENT\nUID:${ev.id}@cwinathome.com\nDTSTAMP:${_icsStamp(new Date())}\nDTSTART:${_icsStamp(start)}\nDTEND:${_icsStamp(end)}\nSUMMARY:${summary}\nDESCRIPTION:${desc}\nLOCATION:${loc}${recur}${alarm}\nEND:VEVENT\nEND:VCALENDAR`;
+  const blob=new Blob([ics],{type:"text/calendar"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");a.href=url;a.download=`cwin-${ev.id}.ics`;a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),100);
+}
+function googleCalLink(ev,clientName){
+  const start=_evStart(ev),end=_evEnd(ev);
+  const dates=`${_icsStamp(start)}/${_icsStamp(end)}`;
+  return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(eventTitleWithClient(ev,clientName))}&dates=${dates}&details=${encodeURIComponent((ev.notes||"")+"\n\nManaged by CWIN At Home")}&location=${encodeURIComponent(ev.location||"")}`;
+}
+function outlookCalLink(ev,clientName){
+  const start=_evStart(ev),end=_evEnd(ev);
+  return `https://outlook.live.com/calendar/0/deeplink/compose?path=/calendar/action/compose&rru=addevent&subject=${encodeURIComponent(eventTitleWithClient(ev,clientName))}&startdt=${encodeURIComponent(start.toISOString())}&enddt=${encodeURIComponent(end.toISOString())}&body=${encodeURIComponent(ev.notes||"")}&location=${encodeURIComponent(ev.location||"")}`;
+}
+
 
 // ─── SEED: CAREGIVERS ───────────────────────────────────────────────
 const CAREGIVERS=[
@@ -2022,9 +2185,37 @@ function LoginScreen({onLogin}){
   const [email,setEmail]=useState("");
   const [pin,setPin]=useState("");
   const [err,setErr]=useState("");
-  const submit=()=>{
-    const u=USERS.find(u=>u.email===email&&u.pin===pin&&u.active);
-    if(u)onLogin(u); else setErr("Invalid credentials");
+  const [info,setInfo]=useState("");
+  const [busy,setBusy]=useState(false);
+  const submit=async()=>{
+    if(busy)return;
+    setErr("");setInfo("");setBusy(true);
+    // 1) Try REAL authentication (Supabase Auth — hashed passwords, server-verified)
+    const res=await sbSignIn(email.trim(),pin);
+    if(res.session){
+      const resolved=await resolveAuthedUser(res.user);
+      setBusy(false);
+      if(resolved.user){onLogin(resolved.user);return;}
+      if(resolved.pending){
+        await sbSignOut();
+        setErr("Your account exists but hasn't been approved yet. Ask the CWIN administrator to assign your role.");
+        return;
+      }
+    }
+    // 2) Demo fallback (insecure — disabled when ALLOW_DEMO_LOGIN=false)
+    if(ALLOW_DEMO_LOGIN){
+      const u=USERS.find(u=>u.email===email&&u.pin===pin&&u.active);
+      if(u){setBusy(false);onLogin({...u,demo:true});return;}
+    }
+    setBusy(false);
+    setErr(res.error&&res.error!=="Sign-in failed"?res.error:"Invalid credentials");
+  };
+  const forgot=async()=>{
+    if(!email.trim()){setErr("Enter your email first, then tap Forgot Password.");return;}
+    setErr("");setBusy(true);
+    const ok=await sbRecoverPassword(email.trim());
+    setBusy(false);
+    setInfo(ok?"If an account exists for "+email.trim()+", a password reset email has been sent.":"Couldn't send reset email — check the address or contact your administrator.");
   };
   return <div className="login-wrap">
     <div className="login-left">
@@ -2040,15 +2231,11 @@ function LoginScreen({onLogin}){
       <h2>Sign In</h2>
       <div className="sub">Enter your credentials to access your portal</div>
       <div className="login-field"><label>Email</label><input type="email" placeholder="you@cwinathome.com" value={email} onChange={e=>{setEmail(e.target.value);setErr("");}}/></div>
-      <div className="login-field"><label>PIN</label><input type="password" placeholder="••••" maxLength={4} value={pin} onChange={e=>{setPin(e.target.value);setErr("");}} onKeyDown={e=>e.key==="Enter"&&submit()}/></div>
-      <button className="login-btn" onClick={submit}>Sign In</button>
+      <div className="login-field"><label>Password</label><input type="password" placeholder="Your password" value={pin} onChange={e=>{setPin(e.target.value);setErr("");}} onKeyDown={e=>e.key==="Enter"&&submit()}/></div>
+      <button className="login-btn" onClick={submit} disabled={busy}>{busy?"Signing in…":"Sign In"}</button>
+      <button onClick={forgot} disabled={busy} style={{background:"none",border:"none",color:"var(--t2)",fontSize:11,marginTop:10,cursor:"pointer",textDecoration:"underline",fontFamily:"var(--f)"}}>Forgot password?</button>
       {err&& <div className="login-err">{err}</div>}
-      <div className="login-hints">
-        <div style={{fontSize:10,textTransform:"uppercase",letterSpacing:1,color:"var(--t2)",fontWeight:600,marginBottom:8}}>Demo Accounts</div>
-        {[{e:"kip@cwinathome.com",p:"1234",r:"Owner"},{e:"admin@cwinathome.com",p:"4321",r:"Admin"},{e:"erolyn@cwinathome.com",p:"1111",r:"Caregiver"},{e:"becky.sutton@email.com",p:"5555",r:"Client"},{e:"tom.sutton@email.com",p:"8888",r:"Family"}].map(h=> <div key={h.e} className="hint" style={{cursor:"pointer"}} onClick={()=>{setEmail(h.e);setPin(h.p);}}>
-          <span>{h.r}</span><span>{h.e} / {h.p}</span>
-        </div>)}
-      </div>
+      {info&& <div style={{marginTop:10,padding:"8px 12px",background:"#f0fdf4",border:"1px solid #86efac",fontSize:12,color:"#166534"}}>{info}</div>}
     </div>
   </div>;
 }
@@ -3297,6 +3484,7 @@ function FamilyStandalonePortal({user,clients,caregivers,careNotes,events,family
 function UserManagementPage({allUsers,setAllUsers}){
   const [showAdd,setShowAdd]=useState(false);
   const [editUser,setEditUser]=useState(null);
+  const [showAuthSetup,setShowAuthSetup]=useState(false);
   const [f,sF]=useState({email:"",pin:"",name:"",role:"caregiver",phone:"",title:"",active:true});
 
   const save=()=>{
@@ -3313,10 +3501,121 @@ function UserManagementPage({allUsers,setAllUsers}){
   const deactivate=(id)=>setAllUsers(p=>p.map(u=>u.id===id?{...u,active:!u.active}:u));
   const byRole=(r)=>allUsers.filter(u=>u.role===r);
 
+  const AUTH_SQL=`-- ═══ CWIN REAL AUTHENTICATION SETUP ═══
+-- Run once in Supabase SQL Editor.
+
+-- 1) Profiles: links each auth account to a CWIN role
+create table if not exists user_profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  email text unique not null,
+  name text,
+  role text not null default 'pending'
+    check (role in ('owner','admin','caregiver','client','family','pending')),
+  caregiver_id text,
+  client_id text,
+  created_at timestamptz default now()
+);
+alter table user_profiles enable row level security;
+
+-- Staff checker (security definer avoids RLS recursion)
+create or replace function is_cwin_staff() returns boolean
+language sql security definer stable as $$
+  select exists(select 1 from user_profiles
+    where id=auth.uid() and role in ('owner','admin'));
+$$;
+
+create policy "read own profile" on user_profiles
+  for select using (auth.uid()=id);
+create policy "create own profile" on user_profiles
+  for insert with check (auth.uid()=id);
+create policy "staff read all profiles" on user_profiles
+  for select using (is_cwin_staff());
+create policy "staff update profiles" on user_profiles
+  for update using (is_cwin_staff());
+
+-- 2) LOCK DOWN the data tables: replace demo anon policies
+--    with authenticated-only access.
+drop policy if exists "anon read clients" on clients_store;
+drop policy if exists "anon insert clients" on clients_store;
+drop policy if exists "anon update clients" on clients_store;
+create policy "auth read clients" on clients_store for select to authenticated using (true);
+create policy "auth insert clients" on clients_store for insert to authenticated with check (true);
+create policy "auth update clients" on clients_store for update to authenticated using (true);
+
+drop policy if exists "anon read caregivers" on caregivers_store;
+drop policy if exists "anon insert caregivers" on caregivers_store;
+drop policy if exists "anon update caregivers" on caregivers_store;
+create policy "auth read caregivers" on caregivers_store for select to authenticated using (true);
+create policy "auth insert caregivers" on caregivers_store for insert to authenticated with check (true);
+create policy "auth update caregivers" on caregivers_store for update to authenticated using (true);
+
+drop policy if exists "anon read chores" on chores_store;
+drop policy if exists "anon insert chores" on chores_store;
+drop policy if exists "anon update chores" on chores_store;
+create policy "auth read chores" on chores_store for select to authenticated using (true);
+create policy "auth insert chores" on chores_store for insert to authenticated with check (true);
+create policy "auth update chores" on chores_store for update to authenticated using (true);
+
+drop policy if exists "anon read locations" on caregiver_locations;
+drop policy if exists "anon upsert locations" on caregiver_locations;
+drop policy if exists "anon update locations" on caregiver_locations;
+create policy "auth read locations" on caregiver_locations for select to authenticated using (true);
+create policy "auth insert locations" on caregiver_locations for insert to authenticated with check (true);
+create policy "auth update locations" on caregiver_locations for update to authenticated using (true);`;
+
   return <div>
     <div className="hdr"><div><h2>User Management</h2><div className="hdr-sub">{allUsers.length} accounts | {allUsers.filter(u=>u.active).length} active</div></div>
-      <button className="btn btn-p btn-sm" onClick={()=>{setShowAdd(true);setEditUser(null);sF({email:"",pin:"",name:"",role:"caregiver",phone:"",title:"",active:true});}}>+ Add User</button>
+      <div style={{display:"flex",gap:6}}>
+        <button className="btn btn-s btn-sm" onClick={()=>setShowAuthSetup(true)}>🔐 Auth Setup (Go Live)</button>
+        <button className="btn btn-p btn-sm" onClick={()=>{setShowAdd(true);setEditUser(null);sF({email:"",pin:"",name:"",role:"caregiver",phone:"",title:"",active:true});}}>+ Add User</button>
+      </div>
     </div>
+
+    {ALLOW_DEMO_LOGIN&&<div className="ai-card" style={{background:"linear-gradient(135deg,#3d2800,#1a1200)",marginBottom:14}}>
+      <h4><span className="pulse" style={{background:"var(--warn)"}}/>⚠️ Demo logins are still enabled</h4>
+      <p>The accounts below use built-in 4-digit PINs that are visible in the app's code — fine for testing, <strong>not safe for real client data</strong>. The demo list is no longer shown on the login screen, but the PINs still work until disabled. Click "🔐 Auth Setup" for the steps to switch to real, secure logins before going live.</p>
+      <details style={{marginTop:8}}>
+        <summary style={{cursor:"pointer",fontSize:11,fontWeight:700,color:"#fcd34d"}}>Show demo credentials (admin reference)</summary>
+        <div style={{marginTop:8,fontSize:11,lineHeight:1.8,color:"rgba(255,255,255,.85)",fontFamily:"monospace"}}>
+          {USERS.map(u=><div key={u.id}>{u.role.padEnd(9)} · {u.email} / {u.pin}</div>)}
+        </div>
+      </details>
+    </div>}
+
+    {/* ═══ AUTH SETUP MODAL ═══ */}
+    {showAuthSetup&&<div className="modal-bg" onClick={()=>setShowAuthSetup(false)}>
+      <div className="modal" style={{maxWidth:720,maxHeight:"92vh",overflow:"auto"}} onClick={e=>e.stopPropagation()}>
+        <div className="modal-h">🔐 Real Authentication — Go-Live Setup<button className="btn btn-sm btn-s" onClick={()=>setShowAuthSetup(false)}>✕</button></div>
+        <div className="modal-b">
+          <div className="ai-card" style={{marginBottom:14}}>
+            <h4>How it works</h4>
+            <p>Real logins use <strong>Supabase Auth</strong>: passwords are hashed server-side, and every database request carries the signed-in user's token, so Row Level Security protects the data itself — not just the screens. The app already tries real sign-in first; demo PINs are only a fallback while testing.</p>
+          </div>
+
+          <div style={{fontSize:13,fontWeight:700,marginBottom:4}}>Step 1 — Run the setup SQL (once)</div>
+          <p style={{fontSize:12,color:"var(--t2)",marginBottom:8}}>Creates the profiles table and replaces the open demo policies with login-required ones on all four data tables.</p>
+          <pre style={{background:"#070707",color:"#7dd3fc",padding:"14px",fontSize:10,lineHeight:1.55,overflow:"auto",borderRadius:4,whiteSpace:"pre-wrap",maxHeight:260}}>{AUTH_SQL}</pre>
+          <button className="btn btn-sm btn-s" style={{margin:"8px 0 16px"}} onClick={()=>{navigator.clipboard?.writeText(AUTH_SQL);alert("SQL copied!");}}>📋 Copy SQL</button>
+
+          <div style={{fontSize:13,fontWeight:700,marginBottom:4}}>Step 2 — Create each person's login</div>
+          <p style={{fontSize:12,color:"var(--t2)",marginBottom:10,lineHeight:1.6}}>Supabase dashboard → <strong>Authentication → Users → Add user</strong> → enter their email and a strong temporary password (check "Auto Confirm User"). Use the same emails as the directory (kip@cwinathome.com, erolyn@cwinathome.com, …). On each person's first sign-in, the app automatically links their login to the right role. Unknown emails land as "pending" until you assign them.</p>
+
+          <div style={{fontSize:13,fontWeight:700,marginBottom:4}}>Step 3 — Turn off demo logins</div>
+          <p style={{fontSize:12,color:"var(--t2)",marginBottom:10,lineHeight:1.6}}>In the code, set <code style={{background:"var(--bg)",padding:"1px 5px"}}>ALLOW_DEMO_LOGIN=false</code> (top of the file, clearly marked) and redeploy. The PIN fallback and the demo account hints disappear; only real Supabase accounts can sign in.</p>
+
+          <div style={{fontSize:13,fontWeight:700,marginBottom:4}}>Step 4 — Test</div>
+          <p style={{fontSize:12,color:"var(--t2)",marginBottom:12,lineHeight:1.6}}>Sign in with a real account on the deployed site, reload (session should persist), sign out, and confirm a wrong password is rejected. Then verify an <em>incognito window with no login</em> can no longer read data.</p>
+
+          <div style={{padding:"10px 14px",background:"#fffbeb",border:"1px solid #fcd34d",fontSize:11,color:"#78350f",lineHeight:1.6,marginBottom:14}}>
+            <strong>⚠️ Notes:</strong> "Forgot password" emails require email to be enabled in Supabase Auth settings (it is by default, with rate limits). For full HIPAA posture, also pursue a BAA with Supabase (Team plan). Fine-grained rules (caregivers see only their clients) can be layered on later — this setup gets you to "login required for everything," which is the critical gate.
+          </div>
+          <div style={{display:"flex",gap:6}}>
+            <a className="btn btn-p" href="https://supabase.com/dashboard/project/okvyhbypncctevvtwqkf/auth/users" target="_blank" rel="noopener noreferrer" style={{flex:1,justifyContent:"center",textDecoration:"none"}}>Open Supabase Auth Users →</a>
+            <a className="btn btn-s" href="https://supabase.com/dashboard/project/okvyhbypncctevvtwqkf/sql/new" target="_blank" rel="noopener noreferrer" style={{textDecoration:"none"}}>SQL Editor</a>
+          </div>
+        </div>
+      </div>
+    </div>}
 
     <div className="sg">
       {Object.entries(ROLES).map(([key,r])=> <div key={key} className="sc"><span className="sl">{r.label}s</span><span className="sv">{byRole(key).length}</span><span className="ss">{byRole(key).filter(u=>u.active).length} active</span></div>)}
@@ -3485,7 +3784,8 @@ export default function App(){
       setTimeout(()=>{clientsLoadedRef.current=true;},300);
     })();
     return()=>{active=false;};
-  },[]);
+  // eslint-disable-next-line
+  },[user]);
   // 2) Auto-save whenever clients change (debounced), after initial load
   useEffect(()=>{
     if(!clientsLoadedRef.current)return; // don't save during/just after load
@@ -3516,7 +3816,8 @@ export default function App(){
       setTimeout(()=>{cgLoadedRef.current=true;},300);
     })();
     return()=>{active=false;};
-  },[]);
+  // eslint-disable-next-line
+  },[user]);
   useEffect(()=>{
     if(!cgLoadedRef.current)return;
     if(cgSync==="offline")return;
@@ -3546,7 +3847,8 @@ export default function App(){
       setTimeout(()=>{choresLoadedRef.current=true;},300);
     })();
     return()=>{active=false;};
-  },[]);
+  // eslint-disable-next-line
+  },[user]);
   useEffect(()=>{
     if(!choresLoadedRef.current)return;
     if(choreSync==="offline")return;
@@ -3626,9 +3928,32 @@ export default function App(){
     return nextItem&&!nextItem.sec;
   });
 
-  const logout=()=>{setUser(null);setPg("dash");};
+  const logout=()=>{sbSignOut();setUser(null);setPg("dash");};
+
+  // ── SESSION RESTORE — auto sign-in if a valid Supabase session exists ──
+  const [authRestoring,setAuthRestoring]=useState(true);
+  useEffect(()=>{
+    let active=true;
+    (async()=>{
+      const sess=await sbRefreshSession();
+      if(active&&sess?.user){
+        const resolved=await resolveAuthedUser(sess.user);
+        if(active&&resolved.user){
+          setUser(resolved.user);
+          const r=resolved.user.role;
+          setPg(r==="caregiver"?"cg_home":r==="client"?"cl_home":r==="family"?"fm_home":"dash");
+        }
+      }
+      if(active)setAuthRestoring(false);
+    })();
+    return()=>{active=false;};
+  },[]);
+
+  // ── DEMO MODE BANNER (insecure login in use) ──
+  const demoBanner=user?.demo?<div style={{position:"fixed",bottom:0,left:0,right:0,zIndex:9000,background:"#7a3030",color:"#fff",padding:"6px 14px",fontSize:11,textAlign:"center",fontFamily:"var(--f)"}}>⚠️ DEMO LOGIN — this account uses an insecure built-in PIN. Set up real accounts (Admin → Users → Auth Setup) and set ALLOW_DEMO_LOGIN=false before live use.</div>:null;
 
   // ── LOGIN GATE ──
+  if(authRestoring&&!user)return <><style>{CSS}</style><div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#070707",color:"#fff",fontFamily:"var(--f)",fontSize:13}}>Checking session…</div></>;
   if(!user) return <><style>{CSS}</style><LoginScreen onLogin={(u)=>{
     setUser(u);
     if(u.role==="caregiver")setPg("cg_home");
@@ -3638,7 +3963,7 @@ export default function App(){
   }}/></>;
 
   // ── CAREGIVER PORTAL ──
-  if(user.role==="caregiver") return <><style>{CSS}</style><div className="app">
+  if(user.role==="caregiver") return <><style>{CSS}</style>{demoBanner}<div className="app">
     <div className="sb">
       <div className="sb-logo"><Logo s={56} c="#fff"/></div>
       <nav style={{flex:1,paddingTop:4}}/>
@@ -3653,7 +3978,7 @@ export default function App(){
   </div></>;
 
   // ── CLIENT PORTAL ──
-  if(user.role==="client") return <><style>{CSS}</style><div className="app">
+  if(user.role==="client") return <><style>{CSS}</style>{demoBanner}<div className="app">
     <div className="sb">
       <div className="sb-logo"><Logo s={56} c="#fff"/></div>
       <nav style={{flex:1,paddingTop:4}}/>
@@ -3668,7 +3993,7 @@ export default function App(){
   </div></>;
 
   // ── FAMILY PORTAL ──
-  if(user.role==="family") return <><style>{CSS}</style><div className="app">
+  if(user.role==="family") return <><style>{CSS}</style>{demoBanner}<div className="app">
     <div className="sb">
       <div className="sb-logo"><Logo s={56} c="#fff"/></div>
       <nav style={{flex:1,paddingTop:4}}/>
@@ -3683,7 +4008,7 @@ export default function App(){
   </div></>;
 
   // ── ADMIN / OWNER / MANAGER ──
-  return <><style>{CSS}</style><div className="app">
+  return <><style>{CSS}</style>{demoBanner}<div className="app">
     <div className="sb">
       <div className="sb-logo"><Logo s={56} c="#fff"/></div>
       <nav style={{flex:1,paddingTop:4}}>
@@ -5926,13 +6251,23 @@ function ClientPortalPage({clients,caregivers,notify,assignments,sel,setSel,serv
     {tab==="schedule"&& <div>
       <div className="card"><div className="card-h"><h3>Upcoming Events & Appointments</h3></div>
         {clEvents.length===0&& <div className="empty">No upcoming events scheduled</div>}
-        {clEvents.map(ev=> <div key={ev.id} style={{padding:"14px 18px",borderBottom:"1px solid var(--bdr)",display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-          <div style={{flex:1}}>
-            <div style={{fontFamily:"var(--fd)",fontSize:15,fontWeight:400}}>{ev.title}</div>
-            <div style={{fontSize:12,color:"var(--t2)",marginTop:2}}>{fmtD(ev.date)} at {fmtT(ev.date)}</div>
-            {ev.notes&& <div style={{fontSize:12,color:"var(--t2)",marginTop:4,lineHeight:1.5}}>{ev.notes}</div>}
+        {clEvents.map(ev=> <div key={ev.id} style={{padding:"14px 18px",borderBottom:"1px solid var(--bdr)"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+            <div style={{flex:1}}>
+              <div style={{fontFamily:"var(--fd)",fontSize:15,fontWeight:400}}>{ev.title}</div>
+              <div style={{fontSize:12,color:"var(--t2)",marginTop:2}}>{fmtD(ev.date)} at {fmtT(ev.date)}</div>
+              {ev.location&&<div style={{fontSize:12,color:"var(--t2)",marginTop:2}}>📍 {ev.location}</div>}
+              {ev.notes&& <div style={{fontSize:12,color:"var(--t2)",marginTop:4,lineHeight:1.5}}>{ev.notes}</div>}
+            </div>
+            <span className={`tag ${ev.type==="medical"?"tag-er":"tag-bl"}`}>{ev.type}</span>
           </div>
-          <span className={`tag ${ev.type==="medical"?"tag-er":"tag-bl"}`}>{ev.type}</span>
+          {/* Add to calendar */}
+          <div style={{display:"flex",gap:6,marginTop:10,flexWrap:"wrap"}}>
+            <span style={{fontSize:10,color:"var(--t2)",alignSelf:"center",fontWeight:600}}>📅 Add to calendar:</span>
+            <a className="btn btn-sm btn-s" href={googleCalLink(ev,cl.name)} target="_blank" rel="noopener noreferrer" style={{textDecoration:"none",fontSize:11}}>Google</a>
+            <a className="btn btn-sm btn-s" href={outlookCalLink(ev,cl.name)} target="_blank" rel="noopener noreferrer" style={{textDecoration:"none",fontSize:11}}>Outlook</a>
+            <button className="btn btn-sm btn-s" style={{fontSize:11}} onClick={()=>downloadEventIcs(ev,cl.name)}>🍎 Apple / .ics</button>
+          </div>
         </div>)}
       </div>
       <div className="card"><div className="card-h"><h3>My Care Team</h3></div>
@@ -6637,9 +6972,17 @@ function FamilyPage({clients,familyMsgs,setFamilyMsgs,careNotes,incidents,events
 
         {/* Upcoming Events */}
         {clEvents.length>0&&<div className="card"><div className="card-h"><h3>Upcoming Events</h3></div>
-          {clEvents.map(ev=><div key={ev.id} style={{padding:"10px 18px",borderBottom:"1px solid var(--bdr)",display:"flex",justifyContent:"space-between"}}>
-            <div><div style={{fontWeight:600,fontSize:13}}>{ev.title}</div><div style={{fontSize:11,color:"var(--t2)"}}>{fmtD(ev.date)}</div></div>
-            <span className={`tag ${ev.type==="medical"?"tag-er":"tag-bl"}`}>{ev.type}</span>
+          {clEvents.map(ev=><div key={ev.id} style={{padding:"10px 18px",borderBottom:"1px solid var(--bdr)"}}>
+            <div style={{display:"flex",justifyContent:"space-between"}}>
+              <div><div style={{fontWeight:600,fontSize:13}}>{ev.title}</div><div style={{fontSize:11,color:"var(--t2)"}}>{fmtD(ev.date)} at {fmtT(ev.date)}{ev.location?" · "+ev.location:""}</div></div>
+              <span className={`tag ${ev.type==="medical"?"tag-er":"tag-bl"}`}>{ev.type}</span>
+            </div>
+            <div style={{display:"flex",gap:6,marginTop:8,flexWrap:"wrap"}}>
+              <span style={{fontSize:10,color:"var(--t2)",alignSelf:"center",fontWeight:600}}>📅 Add:</span>
+              <a className="btn btn-sm btn-s" href={googleCalLink(ev,cl?.name)} target="_blank" rel="noopener noreferrer" style={{textDecoration:"none",fontSize:11}}>Google</a>
+              <a className="btn btn-sm btn-s" href={outlookCalLink(ev,cl?.name)} target="_blank" rel="noopener noreferrer" style={{textDecoration:"none",fontSize:11}}>Outlook</a>
+              <button className="btn btn-sm btn-s" style={{fontSize:11}} onClick={()=>downloadEventIcs(ev,cl?.name)}>🍎 .ics</button>
+            </div>
           </div>)}
         </div>}
       </div>
