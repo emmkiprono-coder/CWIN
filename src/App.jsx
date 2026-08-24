@@ -212,7 +212,7 @@ async function sbLoadChores(){
     const resp=await fetch(SB_URL+"/rest/v1/chores_store?select=id,data&order=id",{headers:sbHeaders});
     if(!resp.ok)return null;
     const rows=await resp.json();
-    if(!Array.isArray(rows)||rows.length===0)return null;
+    if(!Array.isArray(rows))return null;if(rows.length===0)return [];
     return rows.map(r=>({...(r.data||{}),id:r.id}));
   }catch(e){console.error("Chore load failed:",e);return null;}
 }
@@ -236,7 +236,7 @@ async function sbSaveChoresBulk(arr){
 // ═══════════════════════════════════════════════════════════════════════
 // ⚠️ SET TO false BEFORE GOING LIVE. While true, the old demo PIN logins
 // still work as a fallback (clearly flagged in the UI as insecure).
-const ALLOW_DEMO_LOGIN=true;
+const ALLOW_DEMO_LOGIN=false;
 
 let sbSession=null;
 function sbSetSession(sess){
@@ -351,7 +351,7 @@ async function sbLoadStore(table){
     const r=await fetch(SB_URL+"/rest/v1/"+table+"?select=id,data&order=id",{headers:sbHeaders});
     if(!r.ok)return null;
     const rows=await r.json();
-    if(!Array.isArray(rows)||rows.length===0)return null;
+    if(!Array.isArray(rows))return null;if(rows.length===0)return [];
     return rows.map(x=>({...(x.data||{}),id:x.id}));
   }catch(e){console.error(table+" load failed:",e);return null;}
 }
@@ -382,7 +382,7 @@ function usePersistedStore(table,data,setData,user){
       if(!active)return;
       if(loaded&&loaded.length>0){setData(loaded);setSync("saved");}
       else if(loaded===null){setSync("offline");}
-      else{setSync("saved");}
+      else{setData([]);setSync("saved");}
       setTimeout(()=>{loadedRef.current=true;},300);
     })();
     return()=>{active=false;};
@@ -3911,7 +3911,7 @@ export default function App(){
       if(!active)return;
       if(loaded&&loaded.length>0){setChores(loaded);setChoreSync("saved");}
       else if(loaded===null){setChoreSync("offline");}
-      else{setChoreSync("saved");}
+      else{setChores([]);setChoreSync("saved");}
       setTimeout(()=>{choresLoadedRef.current=true;},300);
     })();
     return()=>{active=false;};
@@ -6965,7 +6965,7 @@ function EventsPage({events,setEvents,clients}){
 // FAMILY PORTAL
 // ═══════════════════════════════════════════════════════════════════════
 function FamilyPage({clients,familyMsgs,setFamilyMsgs,careNotes,incidents,events,moments,setMoments,caregivers,chores,setChores,notify}){
-  const [selClient,setSelClient]=useState("CL2");
+  const [selClient,setSelClient]=useState(clients?.[0]?.id||"CL1");
   const [msg,setMsg]=useState("");
   const [momentCaption,setMomentCaption]=useState("");
   const [momentPhoto,setMomentPhoto]=useState(null);
