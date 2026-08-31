@@ -3651,7 +3651,7 @@ begin
 end $lockdown$;`;
 
   return <div>
-    <div className="hdr"><div><h2>User Management</h2><div className="hdr-sub">{allUsers.length} accounts | {allUsers.filter(u=>u.active).length} active</div></div>
+    <div className="hdr"><div><h2>User Management</h2><div className="hdr-sub">{profiles?profiles.length+" real accounts":"…"}</div></div>
       <div style={{display:"flex",gap:6}}>
         <button className="btn btn-s btn-sm" onClick={()=>setShowAuthSetup(true)}>🔐 Auth Setup (Go Live)</button>
         <button className="btn btn-p btn-sm" onClick={()=>{setShowAdd(true);setCreateError("");sF({email:"",name:"",role:"caregiver",caregiverId:"",clientId:""});}}>+ Add User</button>
@@ -3722,7 +3722,7 @@ end $lockdown$;`;
     </div>}
 
     <div className="sg">
-      {Object.entries(ROLES).map(([key,r])=> <div key={key} className="sc"><span className="sl">{r.label}s</span><span className="sv">{byRole(key).length}</span><span className="ss">{byRole(key).filter(u=>u.active).length} active</span></div>)}
+      {Object.entries(ROLES).map(([key,r])=> <div key={key} className="sc"><span className="sl">{r.label}s</span><span className="sv">{(profiles||[]).filter(u=>u.role===key).length}</span></div>)}
     </div>
 
     {showAdd&& <div className="card card-b" style={{borderLeft:"3px solid var(--black)"}}>
