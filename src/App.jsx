@@ -3533,7 +3533,6 @@ function FamilyStandalonePortal({user,clients,caregivers,careNotes,events,family
 // ═══════════════════════════════════════════════════════════════════════
 function UserManagementPage({allUsers,setAllUsers}){
   const [showAdd,setShowAdd]=useState(false);
-  const [showAuthSetup,setShowAuthSetup]=useState(false);
   const [f,sF]=useState({email:"",name:"",role:"caregiver",caregiverId:"",clientId:""});
   const [profiles,setProfiles]=useState(null); // real accounts, loaded from Supabase
   const [loadingProfiles,setLoadingProfiles]=useState(true);
@@ -3581,79 +3580,9 @@ function UserManagementPage({allUsers,setAllUsers}){
     }catch(e){/* best effort */}
   };
 
-  const AUTH_SQL=`-- ═══ CWIN REAL AUTHENTICATION SETUP ═══
--- Run once in Supabase SQL Editor.
-
--- 1) Profiles: links each auth account to a CWIN role
-create table if not exists user_profiles (
-  id uuid primary key references auth.users(id) on delete cascade,
-  email text unique not null,
-  name text,
-  role text not null default 'pending'
-    check (role in ('owner','admin','caregiver','client','family','pending')),
-  caregiver_id text,
-  client_id text,
-  created_at timestamptz default now()
-);
-alter table user_profiles enable row level security;
-
--- Staff checker (security definer avoids RLS recursion)
-create or replace function is_cwin_staff() returns boolean
-language sql security definer stable as $$
-  select exists(select 1 from user_profiles
-    where id=auth.uid() and role in ('owner','admin'));
-$$;
-
-create policy "read own profile" on user_profiles
-  for select using (auth.uid()=id);
-create policy "create own profile" on user_profiles
-  for insert with check (auth.uid()=id);
-create policy "staff read all profiles" on user_profiles
-  for select using (is_cwin_staff());
-create policy "staff update profiles" on user_profiles
-  for update using (is_cwin_staff());
-
--- 2) LOCK DOWN every data table: replace demo anon policies
---    with authenticated-only access (covers all CWIN stores).
--- Legacy policy names from early setups:
-drop policy if exists "anon read clients" on clients_store;
-drop policy if exists "anon insert clients" on clients_store;
-drop policy if exists "anon update clients" on clients_store;
-drop policy if exists "anon read caregivers" on caregivers_store;
-drop policy if exists "anon insert caregivers" on caregivers_store;
-drop policy if exists "anon update caregivers" on caregivers_store;
-drop policy if exists "anon read chores" on chores_store;
-drop policy if exists "anon insert chores" on chores_store;
-drop policy if exists "anon update chores" on chores_store;
-drop policy if exists "anon read locations" on caregiver_locations;
-drop policy if exists "anon upsert locations" on caregiver_locations;
-drop policy if exists "anon update locations" on caregiver_locations;
-
-do $lockdown$
-declare t text;
-begin
-  foreach t in array array[
-    'clients_store','caregivers_store','chores_store','schedules_store',
-    'client_leads_store','cg_applicants_store','invoices_store','payslips_store',
-    'visits_store','med_records_store','care_notes_store','incidents_store',
-    'events_store','referral_bonuses_store','caregiver_locations'
-  ] loop
-    execute format('drop policy if exists "anon read" on %I',t);
-    execute format('drop policy if exists "anon insert" on %I',t);
-    execute format('drop policy if exists "anon update" on %I',t);
-    execute format('drop policy if exists "auth read" on %I',t);
-    execute format('drop policy if exists "auth insert" on %I',t);
-    execute format('drop policy if exists "auth update" on %I',t);
-    execute format('create policy "auth read" on %I for select to authenticated using (true)',t);
-    execute format('create policy "auth insert" on %I for insert to authenticated with check (true)',t);
-    execute format('create policy "auth update" on %I for update to authenticated using (true)',t);
-  end loop;
-end $lockdown$;`;
-
   return <div>
     <div className="hdr"><div><h2>User Management</h2><div className="hdr-sub">{profiles?profiles.length+" real accounts":"…"}</div></div>
       <div style={{display:"flex",gap:6}}>
-        <button className="btn btn-s btn-sm" onClick={()=>setShowAuthSetup(true)}>🔐 Auth Setup (Go Live)</button>
         <button className="btn btn-p btn-sm" onClick={()=>{setShowAdd(true);setCreateError("");sF({email:"",name:"",role:"caregiver",caregiverId:"",clientId:""});}}>+ Add User</button>
       </div>
     </div>
@@ -3682,40 +3611,6 @@ end $lockdown$;`;
           <button className="btn btn-sm btn-s" style={{marginBottom:12}} onClick={()=>{navigator.clipboard?.writeText(newAccount.tempPassword);alert("Password copied!");}}>📋 Copy Password</button>
           <div style={{padding:"10px 14px",background:"#fffbeb",border:"1px solid #fcd34d",fontSize:11,color:"#78350f",lineHeight:1.6}}>
             <strong>⚠️ This is shown only once.</strong> Share it directly with {newAccount.email.split("@")[0]} by text or call — not email. Ask them to change it after signing in. Closing this box hides it for good.
-          </div>
-        </div>
-      </div>
-    </div>}
-
-    {showAuthSetup&&<div className="modal-bg" onClick={()=>setShowAuthSetup(false)}>
-      <div className="modal" style={{maxWidth:720,maxHeight:"92vh",overflow:"auto"}} onClick={e=>e.stopPropagation()}>
-        <div className="modal-h">🔐 Real Authentication — Go-Live Setup<button className="btn btn-sm btn-s" onClick={()=>setShowAuthSetup(false)}>✕</button></div>
-        <div className="modal-b">
-          <div className="ai-card" style={{marginBottom:14}}>
-            <h4>How it works</h4>
-            <p>Real logins use <strong>Supabase Auth</strong>: passwords are hashed server-side, and every database request carries the signed-in user's token, so Row Level Security protects the data itself — not just the screens. The app already tries real sign-in first; demo PINs are only a fallback while testing.</p>
-          </div>
-
-          <div style={{fontSize:13,fontWeight:700,marginBottom:4}}>Step 1 — Run the setup SQL (once)</div>
-          <p style={{fontSize:12,color:"var(--t2)",marginBottom:8}}>Creates the profiles table and replaces the open demo policies with login-required ones on all four data tables.</p>
-          <pre style={{background:"#070707",color:"#7dd3fc",padding:"14px",fontSize:10,lineHeight:1.55,overflow:"auto",borderRadius:4,whiteSpace:"pre-wrap",maxHeight:260}}>{AUTH_SQL}</pre>
-          <button className="btn btn-sm btn-s" style={{margin:"8px 0 16px"}} onClick={()=>{navigator.clipboard?.writeText(AUTH_SQL);alert("SQL copied!");}}>📋 Copy SQL</button>
-
-          <div style={{fontSize:13,fontWeight:700,marginBottom:4}}>Step 2 — Create each person's login</div>
-          <p style={{fontSize:12,color:"var(--t2)",marginBottom:10,lineHeight:1.6}}>Supabase dashboard → <strong>Authentication → Users → Add user</strong> → enter their email and a strong temporary password (check "Auto Confirm User"). On each person's first sign-in, the app checks their profile for an assigned role. Unknown emails land as "pending" until an owner/admin assigns them a role directly in the <code style={{background:"var(--bg)",padding:"1px 5px"}}>user_profiles</code> table.</p>
-
-          <div style={{fontSize:13,fontWeight:700,marginBottom:4}}>Step 3 — Turn off demo logins</div>
-          <p style={{fontSize:12,color:"var(--t2)",marginBottom:10,lineHeight:1.6}}>In the code, set <code style={{background:"var(--bg)",padding:"1px 5px"}}>ALLOW_DEMO_LOGIN=false</code> (top of the file, clearly marked) and redeploy. The PIN fallback and the demo account hints disappear; only real Supabase accounts can sign in.</p>
-
-          <div style={{fontSize:13,fontWeight:700,marginBottom:4}}>Step 4 — Test</div>
-          <p style={{fontSize:12,color:"var(--t2)",marginBottom:12,lineHeight:1.6}}>Sign in with a real account on the deployed site, reload (session should persist), sign out, and confirm a wrong password is rejected. Then verify an <em>incognito window with no login</em> can no longer read data.</p>
-
-          <div style={{padding:"10px 14px",background:"#fffbeb",border:"1px solid #fcd34d",fontSize:11,color:"#78350f",lineHeight:1.6,marginBottom:14}}>
-            <strong>⚠️ Notes:</strong> "Forgot password" emails require email to be enabled in Supabase Auth settings (it is by default, with rate limits). For full HIPAA posture, also pursue a BAA with Supabase (Team plan). Fine-grained rules (caregivers see only their clients) can be layered on later — this setup gets you to "login required for everything," which is the critical gate.
-          </div>
-          <div style={{display:"flex",gap:6}}>
-            <a className="btn btn-p" href="https://supabase.com/dashboard/project/okvyhbypncctevvtwqkf/auth/users" target="_blank" rel="noopener noreferrer" style={{flex:1,justifyContent:"center",textDecoration:"none"}}>Open Supabase Auth Users →</a>
-            <a className="btn btn-s" href="https://supabase.com/dashboard/project/okvyhbypncctevvtwqkf/sql/new" target="_blank" rel="noopener noreferrer" style={{textDecoration:"none"}}>SQL Editor</a>
           </div>
         </div>
       </div>
@@ -4076,8 +3971,16 @@ export default function App(){
     return()=>{active=false;};
   },[]);
 
+  // ── PERIODIC TOKEN REFRESH — keeps the session alive during long visits
+  // so API calls (like Add User) don't fail with "session expired" ──
+  useEffect(()=>{
+    if(!user||user.demo)return;
+    const iv=setInterval(()=>{sbRefreshSession();},10*60*1000); // every 10 minutes
+    return()=>clearInterval(iv);
+  },[user]);
+
   // ── DEMO MODE BANNER (insecure login in use) ──
-  const demoBanner=user?.demo?<div style={{position:"fixed",bottom:0,left:0,right:0,zIndex:9000,background:"#7a3030",color:"#fff",padding:"6px 14px",fontSize:11,textAlign:"center",fontFamily:"var(--f)"}}>⚠️ DEMO LOGIN — this account uses an insecure built-in PIN. Set up real accounts (Admin → Users → Auth Setup) and set ALLOW_DEMO_LOGIN=false before live use.</div>:null;
+  const demoBanner=user?.demo?<div style={{position:"fixed",bottom:0,left:0,right:0,zIndex:9000,background:"#7a3030",color:"#fff",padding:"6px 14px",fontSize:11,textAlign:"center",fontFamily:"var(--f)"}}>⚠️ DEMO LOGIN — this account uses an insecure built-in PIN. Set up a real account instead and set ALLOW_DEMO_LOGIN=false before live use.</div>:null;
 
   // ── LOGIN GATE ──
   if(authRestoring&&!user)return <><style>{CSS}</style><div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#070707",color:"#fff",fontFamily:"var(--f)",fontSize:13}}>Checking session…</div></>;
