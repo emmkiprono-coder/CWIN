@@ -7187,9 +7187,146 @@ function FamilyPage({clients,familyMsgs,setFamilyMsgs,careNotes,incidents,events
 // ═══════════════════════════════════════════════════════════════════════
 // TEAM
 // ═══════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════
+// CAREGIVER HR PROFILE FORM — add or edit a caregiver's full record,
+// including personal details, pay, and (separately, securely) SSN.
+// SSN never touches caregivers_store — it's saved/read through a
+// dedicated locked-down endpoint that only owner/admin can call, and
+// is encrypted at rest on the server. See /api/caregiver-ssn.js.
+// ═══════════════════════════════════════════════════════════════════════
+function CaregiverFormModal({mode,initial,onClose,onSave}){
+  const blank={name:"",email:"",phone:"",dob:"",employmentType:"W-2",rate:20,hireDate:today(),certs:[],
+    address:{street:"",city:"",state:"",zip:""},
+    emergencyContact:{name:"",phone:"",relation:""}};
+  const [f,setF]=useState(initial?{...blank,...initial,address:{...blank.address,...(initial.address||{})},emergencyContact:{...blank.emergencyContact,...(initial.emergencyContact||{})}}:blank);
+  const [certInput,setCertInput]=useState("");
+  const [saving,setSaving]=useState(false);
+
+  // ── SSN sub-section state (independent of the main form save) ──
+  const [ssnStatus,setSsnStatus]=useState(null); // {onFile,last4} | null while loading
+  const [ssnInput,setSsnInput]=useState("");
+  const [ssnRevealed,setSsnRevealed]=useState(null); // plaintext, only after explicit reveal
+  const [ssnBusy,setSsnBusy]=useState(false);
+  const [ssnErr,setSsnErr]=useState("");
+
+  useEffect(()=>{
+    if(mode!=="edit"||!initial?.id)return;
+    (async()=>{
+      try{
+        const r=await fetch("/api/caregiver-ssn",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+(sbSession?.access_token||"")},body:JSON.stringify({caregiverId:initial.id})});
+        const d=await r.json();
+        if(r.ok)setSsnStatus(d);
+      }catch(e){/* leave status unknown; section shows a retry-friendly state */}
+    })();
+  // eslint-disable-next-line
+  },[initial?.id,mode]);
+
+  const saveSsn=async()=>{
+    const digits=ssnInput.replace(/\D/g,"");
+    if(digits.length!==9){setSsnErr("SSN must be 9 digits.");return;}
+    setSsnBusy(true);setSsnErr("");
+    try{
+      const r=await fetch("/api/caregiver-ssn",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+(sbSession?.access_token||"")},body:JSON.stringify({caregiverId:initial.id,action:"save",ssn:digits})});
+      const d=await r.json();
+      if(!r.ok){setSsnErr(d.error||"Failed to save SSN.");setSsnBusy(false);return;}
+      setSsnStatus({onFile:true,last4:d.last4});setSsnInput("");setSsnRevealed(null);
+    }catch(e){setSsnErr("Network error — please try again.");}
+    setSsnBusy(false);
+  };
+  const revealSsn=async()=>{
+    setSsnBusy(true);setSsnErr("");
+    try{
+      const r=await fetch("/api/caregiver-ssn",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+(sbSession?.access_token||"")},body:JSON.stringify({caregiverId:initial.id,action:"reveal"})});
+      const d=await r.json();
+      if(!r.ok){setSsnErr(d.error||"Failed to reveal SSN.");setSsnBusy(false);return;}
+      setSsnRevealed(d.ssn);
+    }catch(e){setSsnErr("Network error — please try again.");}
+    setSsnBusy(false);
+  };
+
+  const submit=()=>{
+    if(!f.name.trim())return;
+    setSaving(true);
+    const id=mode==="edit"?initial.id:"CG"+uid();
+    const record={...f,id,avatar:f.name.split(" ").map(n=>n[0]).join("").toUpperCase().slice(0,2),
+      status:initial?.status||"active",archived:initial?.archived||false,
+      photo:initial?.photo||null,trainingComplete:initial?.trainingComplete||0,trainingTotal:initial?.trainingTotal||TRAINING_MODULES.length};
+    onSave(record,mode);
+    setSaving(false);
+  };
+
+  return <div className="modal-bg" onClick={onClose}>
+    <div className="modal" style={{maxWidth:640,maxHeight:"92vh",overflow:"auto"}} onClick={e=>e.stopPropagation()}>
+      <div className="modal-h">{mode==="edit"?"✏️ Edit Caregiver":"➕ Add Caregiver"}<button className="btn btn-sm btn-s" onClick={onClose}>✕</button></div>
+      <div className="modal-b">
+        <div className="fg" style={{marginBottom:12}}>
+          <div className="fi"><label>Full Name *</label><input value={f.name} onChange={e=>setF(p=>({...p,name:e.target.value}))}/></div>
+          <div className="fi"><label>Date of Birth</label><input type="date" value={f.dob||""} onChange={e=>setF(p=>({...p,dob:e.target.value}))}/></div>
+        </div>
+        <div className="fg" style={{marginBottom:12}}>
+          <div className="fi"><label>Email</label><input type="email" value={f.email} onChange={e=>setF(p=>({...p,email:e.target.value}))}/></div>
+          <div className="fi"><label>Phone</label><input value={f.phone} onChange={e=>setF(p=>({...p,phone:e.target.value}))}/></div>
+        </div>
+
+        <div style={{fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:.5,color:"var(--t2)",marginTop:16,marginBottom:6}}>Home Address</div>
+        <div className="fi" style={{marginBottom:12}}><label>Street</label><input value={f.address.street} onChange={e=>setF(p=>({...p,address:{...p.address,street:e.target.value}}))}/></div>
+        <div className="fg" style={{marginBottom:12}}>
+          <div className="fi"><label>City</label><input value={f.address.city} onChange={e=>setF(p=>({...p,address:{...p.address,city:e.target.value}}))}/></div>
+          <div className="fi"><label>State</label><input value={f.address.state} onChange={e=>setF(p=>({...p,address:{...p.address,state:e.target.value}}))} maxLength={2} placeholder="IL"/></div>
+        </div>
+        <div className="fi" style={{marginBottom:12,maxWidth:160}}><label>ZIP</label><input value={f.address.zip} onChange={e=>setF(p=>({...p,address:{...p.address,zip:e.target.value}}))}/></div>
+
+        <div style={{fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:.5,color:"var(--t2)",marginTop:16,marginBottom:6}}>Emergency Contact</div>
+        <div className="fg" style={{marginBottom:12}}>
+          <div className="fi"><label>Name</label><input value={f.emergencyContact.name} onChange={e=>setF(p=>({...p,emergencyContact:{...p.emergencyContact,name:e.target.value}}))}/></div>
+          <div className="fi"><label>Relationship</label><input value={f.emergencyContact.relation} onChange={e=>setF(p=>({...p,emergencyContact:{...p.emergencyContact,relation:e.target.value}}))} placeholder="e.g. Spouse, Parent"/></div>
+        </div>
+        <div className="fi" style={{marginBottom:12,maxWidth:260}}><label>Phone</label><input value={f.emergencyContact.phone} onChange={e=>setF(p=>({...p,emergencyContact:{...p.emergencyContact,phone:e.target.value}}))}/></div>
+
+        <div style={{fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:.5,color:"var(--t2)",marginTop:16,marginBottom:6}}>Employment & Pay</div>
+        <div className="fg" style={{marginBottom:12}}>
+          <div className="fi"><label>Employment Type</label><select value={f.employmentType} onChange={e=>setF(p=>({...p,employmentType:e.target.value}))}><option value="W-2">W-2 Employee</option><option value="1099">1099 Contractor</option></select></div>
+          <div className="fi"><label>Hourly Rate ($)</label><input type="number" step="0.5" value={f.rate} onChange={e=>setF(p=>({...p,rate:parseFloat(e.target.value)||0}))}/></div>
+        </div>
+        <div className="fi" style={{marginBottom:12,maxWidth:260}}><label>Hire Date</label><input type="date" value={f.hireDate} onChange={e=>setF(p=>({...p,hireDate:e.target.value}))}/></div>
+
+        <div style={{marginBottom:12}}>
+          <label style={{fontSize:11,fontWeight:600,textTransform:"uppercase",letterSpacing:.5,display:"block",marginBottom:4}}>Certifications</label>
+          <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:6}}>{(f.certs||[]).map((c,i)=><span key={i} className="tag tag-bl" style={{cursor:"pointer"}} onClick={()=>setF(p=>({...p,certs:p.certs.filter((_,j)=>j!==i)}))}>{c} ✕</span>)}</div>
+          <div style={{display:"flex",gap:4}}><select value={certInput} onChange={e=>setCertInput(e.target.value)}><option value="">Add cert...</option><option>CNA</option><option>HHA</option><option>CPR/BLS</option><option>First Aid</option><option>Dementia Care</option><option>Alzheimer's Care</option><option>Parkinson's Care</option><option>Wound Care</option><option>Medication Aide</option></select><button className="btn btn-sm btn-s" onClick={()=>{if(certInput){setF(p=>({...p,certs:[...(p.certs||[]),certInput]}));setCertInput("");}}}>Add</button></div>
+        </div>
+
+        <button className="btn btn-p" style={{width:"100%",marginBottom:18}} disabled={!f.name.trim()||saving} onClick={submit}>{saving?"Saving…":mode==="edit"?"Save Changes":"Add Caregiver"}</button>
+
+        {/* ═══ SSN — separate, locked-down section (owner/admin only, encrypted at rest) ═══ */}
+        {mode==="edit"&&<div style={{padding:"14px",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:4}}>
+          <div style={{fontSize:12,fontWeight:700,color:"#7f1d1d",marginBottom:4}}>🔒 Social Security Number</div>
+          <div style={{fontSize:11,color:"#7f1d1d",marginBottom:10,lineHeight:1.5}}>Stored encrypted, accessible only to owner/admin, never sent in bulk lists. Handle with care.</div>
+          {ssnStatus===null&&<div style={{fontSize:12,color:"#7f1d1d"}}>Checking…</div>}
+          {ssnStatus&&<div style={{fontSize:13,marginBottom:10}}>
+            {ssnStatus.onFile?<span>On file: <strong>{ssnRevealed?ssnRevealed:"•••-••-"+ssnStatus.last4}</strong>{" "}
+              {!ssnRevealed&&<button className="btn btn-sm btn-s" disabled={ssnBusy} onClick={revealSsn} style={{marginLeft:6}}>{ssnBusy?"…":"Reveal"}</button>}
+              {ssnRevealed&&<button className="btn btn-sm btn-s" onClick={()=>setSsnRevealed(null)} style={{marginLeft:6}}>Hide</button>}
+            </span>:<span style={{color:"#7f1d1d"}}>Not on file</span>}
+          </div>}
+          <div style={{display:"flex",gap:6}}>
+            <input value={ssnInput} onChange={e=>setSsnInput(e.target.value)} placeholder="XXX-XX-XXXX" maxLength={11} style={{flex:1}}/>
+            <button className="btn btn-sm btn-p" disabled={ssnBusy} onClick={saveSsn}>{ssnBusy?"Saving…":ssnStatus?.onFile?"Replace":"Save SSN"}</button>
+          </div>
+          {ssnErr&&<div className="login-err" style={{marginTop:8}}>{ssnErr}</div>}
+        </div>}
+        {mode==="add"&&<div style={{padding:"12px 14px",background:"var(--bg)",fontSize:11,color:"var(--t2)"}}>Save this caregiver first — then reopen Edit to add their SSN securely.</div>}
+      </div>
+    </div>
+  </div>;
+}
+
 function TeamPage({caregivers,setCaregivers,progress,clients,assignments,setAssignments,cgSync}){
   const [manageCG,setManageCG] = useState(null);
   const [showCloudSetup,setShowCloudSetup]=useState(false);
+  const [cgFormMode,setCgFormMode]=useState(null); // "add" | "edit" | null
+  const [cgFormInitial,setCgFormInitial]=useState(null);
+  const [showArchived,setShowArchived]=useState(false);
   const activeClients=(clients||[]).filter(c=>c.status!=="archived");
   const getAssignedClients=(cgId)=>assignments.filter(a=>a.caregiverId===cgId&&a.status==="active").map(a=>a.clientId);
   const toggleAssign=(cgId,clId)=>{
@@ -7208,14 +7345,24 @@ function TeamPage({caregivers,setCaregivers,progress,clients,assignments,setAssi
     }
   };
 
+  const visibleCGs=caregivers.filter(cg=>showArchived?true:!cg.archived);
+  const activeCount=caregivers.filter(cg=>!cg.archived).length;
   return <div>
-    <div className="hdr"><div><h2>Team</h2><div className="hdr-sub">{caregivers.length} active caregivers · {assignments.filter(a=>a.status==="active").length} active assignments</div></div>
+    <div className="hdr"><div><h2>Team</h2><div className="hdr-sub">{activeCount} active caregivers · {assignments.filter(a=>a.status==="active").length} active assignments</div></div>
       <div style={{display:"flex",gap:6,alignItems:"center"}}>
         {(()=>{const map={loading:{t:"⏳ Loading…",c:"#6b7280"},saving:{t:"⏳ Saving…",c:"#0369a1"},saved:{t:"☁️ Saved",c:"#16a34a"},error:{t:"⚠️ Save failed",c:"#dc2626"},offline:{t:"⚙️ Set up cloud save",c:"#d97706"},idle:{t:"",c:""}};const s=map[cgSync]||map.idle;if(!s.t)return null;
           return <button onClick={()=>setShowCloudSetup(true)} title="Caregiver data auto-saves to your Supabase database" style={{fontSize:10,fontWeight:600,color:s.c,background:"none",border:"1px solid "+s.c+"55",padding:"4px 8px",cursor:"pointer",borderRadius:3}}>{s.t}</button>;
         })()}
+        <button className="btn btn-sm btn-s" onClick={()=>setShowArchived(p=>!p)}>{showArchived?"Hide Archived":"Show Archived"}</button>
+        <button className="btn btn-p btn-sm" onClick={()=>{setCgFormInitial(null);setCgFormMode("add");}}>+ Add Caregiver</button>
       </div>
     </div>
+
+    {cgFormMode&&<CaregiverFormModal mode={cgFormMode} initial={cgFormInitial} onClose={()=>{setCgFormMode(null);setCgFormInitial(null);}} onSave={(record,mode)=>{
+      if(mode==="edit")setCaregivers(p=>p.map(c=>c.id===record.id?record:c));
+      else setCaregivers(p=>[...p,record]);
+      setCgFormMode(null);setCgFormInitial(null);
+    }}/>}
 
     {/* ═══ CLOUD SAVE SETUP MODAL (caregivers) ═══ */}
     {showCloudSetup&&<div className="modal-bg" onClick={()=>setShowCloudSetup(false)}>
@@ -7253,17 +7400,23 @@ create policy "anon update caregivers" on caregivers_store
       </div>
     </div>}
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(320px,1fr))",gap:14}}>
-      {caregivers.map(cg=>{const done=(progress[cg.id]||[]).length;const pct=Math.round(done/TRAINING_MODULES.length*100);
+      {visibleCGs.map(cg=>{const done=(progress[cg.id]||[]).length;const pct=Math.round(done/TRAINING_MODULES.length*100);
         const assignedIds=getAssignedClients(cg.id);
         const assignedClientNames=assignedIds.map(id=>clients.find(c=>c.id===id)).filter(Boolean);
-        return <div key={cg.id} className="card card-b">
+        return <div key={cg.id} className="card card-b" style={cg.archived?{opacity:.6}:undefined}>
           <div style={{display:"flex",gap:14,alignItems:"flex-start",marginBottom:14}}>
             <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6}}>
               <ProfileAvatar name={cg.name} photo={cg.photo} size={56} dark/>
               <PhotoUpload currentPhoto={cg.photo} onUpload={url=>setCaregivers(p=>p.map(c=>c.id===cg.id?{...c,photo:url}:c))} entityType="caregiver" entityId={cg.id} compact/>
             </div>
             <div style={{flex:1}}><div style={{fontFamily:"var(--fd)",fontSize:17,fontWeight:400}}>{cg.name}</div><div style={{fontSize:12,color:"var(--t2)"}}>{cg.email}</div><div style={{fontSize:12,color:"var(--t2)"}}>{cg.phone}</div></div>
-            <span className="tag tag-ok">Active</span>
+            <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6}}>
+              {cg.archived?<span className="tag tag-er">Archived</span>:<span className="tag tag-ok">Active</span>}
+              <div style={{display:"flex",gap:4}}>
+                <button className="btn btn-sm btn-s" style={{fontSize:10,padding:"3px 8px"}} onClick={()=>{setCgFormInitial(cg);setCgFormMode("edit");}}>Edit</button>
+                <button className="btn btn-sm btn-s" style={{fontSize:10,padding:"3px 8px"}} onClick={()=>setCaregivers(p=>p.map(c=>c.id===cg.id?{...c,archived:!c.archived}:c))}>{cg.archived?"Unarchive":"Archive"}</button>
+              </div>
+            </div>
           </div>
           <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>{(cg.certs||[]).map(c=><span key={c} className="tag tag-bl">{c}</span>)}</div>
 
@@ -7289,6 +7442,7 @@ create policy "anon update caregivers" on caregivers_store
           </div>
         </div>;})}
     </div>
+    {visibleCGs.length===0&&<div className="card card-b empty" style={{marginTop:14}}>{showArchived?"No caregivers found.":"No active caregivers — click \"+ Add Caregiver\" or check \"Show Archived\"."}</div>}
 
     {/* ═══ MANAGE ASSIGNMENTS MODAL ═══ */}
     {manageCG&&<div className="modal-bg" onClick={()=>setManageCG(null)}>
@@ -7659,7 +7813,7 @@ Be balanced, specific, and honest. Focus on patterns across answers, not single 
   // Convert hired applicant to caregiver
   const convertToCaregiver=(ap)=>{
     const newId="CG"+uid();
-    const newCG={id:newId,shortId:newId,name:ap.name,email:ap.email,phone:ap.phone,rate:20,certs:ap.certs||[],hireDate:today(),photo:null,avatar:ap.name.split(" ").map(n=>n[0]).join(""),status:"active",trainingComplete:0,trainingTotal:12};
+    const newCG={id:newId,shortId:newId,name:ap.name,email:ap.email,phone:ap.phone,rate:20,certs:ap.certs||[],hireDate:today(),photo:null,avatar:ap.name.split(" ").map(n=>n[0]).join(""),status:"active",archived:false,dob:"",employmentType:"W-2",address:{street:"",city:"",state:"",zip:""},emergencyContact:{name:"",phone:"",relation:""},trainingComplete:0,trainingTotal:12};
     setCaregivers(p=>[...p,newCG]);
     addActivity(applicants,setApplicants,ap.id,"✅ Converted to caregiver record: "+newId);
     // Check for internal referrer and prompt for bonus
