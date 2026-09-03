@@ -3971,8 +3971,54 @@ export default function App(){
   const billingPeriodSync=usePersistedStore("billing_periods_store",billingPeriods,setBillingPeriods,user);
   const rateCardSync=usePersistedStore("rate_cards_store",rateCards,setRateCards,user);
   const payCardSync=usePersistedStore("pay_cards_store",payCards,setPayCards,user);
+  const expenseSync=usePersistedStore("expenses_store",expenses,setExpenses,user);
+  const familyMsgSync=usePersistedStore("family_msgs_store",familyMsgs,setFamilyMsgs,user);
+  const serviceReqSync=usePersistedStore("service_requests_store",serviceRequests,setServiceRequests,user);
+  const surveySync=usePersistedStore("surveys_store",surveys,setSurveys,user);
+  const careGoalSync=usePersistedStore("care_goals_store",careGoals,setCareGoals,user);
+  const vitalSync=usePersistedStore("vitals_store",vitals,setVitals,user);
+  const campaignSync=usePersistedStore("campaigns_store",campaigns,setCampaigns,user);
+  const assignmentSync=usePersistedStore("assignments_store",assignments,setAssignments,user);
+  const notificationSync=usePersistedStore("notifications_store",notifications,setNotifications,user);
+  const momentSync=usePersistedStore("moments_store",moments,setMoments,user);
+  const trainingAssignSync=usePersistedStore("training_assignments_store",trainingAssignments,setTrainingAssignments,user);
+
+  // ── trainingProgress is stored as an OBJECT ({caregiverId: [moduleIdx,...]}),
+  //    not an array, so it needs its own load/save pair instead of the
+  //    generic array-based usePersistedStore engine. ──
+  const [tpSync,setTpSync]=useState("idle");
+  const tpLoadedRef=useRef(false);
+  useEffect(()=>{
+    let active=true;
+    (async()=>{
+      setTpSync("loading");
+      const loaded=await sbLoadStore("training_progress_store");
+      if(!active)return;
+      if(loaded&&loaded.length>0){
+        const obj={};loaded.forEach(r=>{obj[r.id]=r.done||[];});
+        setTrainingProgress(obj);setTpSync("saved");
+      }else if(loaded===null){setTpSync("offline");}
+      else{setTpSync("saved");}
+      setTimeout(()=>{tpLoadedRef.current=true;},300);
+    })();
+    return()=>{active=false;};
+  // eslint-disable-next-line
+  },[user]);
+  useEffect(()=>{
+    if(!tpLoadedRef.current)return;
+    if(tpSync==="offline")return;
+    setTpSync("saving");
+    const t=setTimeout(async()=>{
+      const arr=Object.entries(trainingProgress).map(([id,done])=>({id,done}));
+      const ok=await sbSaveStoreBulk("training_progress_store",arr);
+      setTpSync(ok?"saved":"error");
+    },1000);
+    return()=>clearTimeout(t);
+  // eslint-disable-next-line
+  },[trainingProgress]);
+
   // Aggregate cloud status for the sidebar indicator
-  const allStoreSyncs={clients:clientSync,caregivers:cgSync,tasks:choreSync,schedules:schedSync,leads:leadSync,applicants:applicantSync,invoices:invoiceSync,payslips:payslipSync,visits:visitSync,meds:medRecSync,notes:noteSync,incidents:incidentSync,events:eventSync,bonuses:bonusSync,pto:ptoSync,bgChecks:bgCheckSync,sigDocs:sigDocSync,compliance:complianceSync,billingPeriods:billingPeriodSync,rateCards:rateCardSync,payCards:payCardSync};
+  const allStoreSyncs={clients:clientSync,caregivers:cgSync,tasks:choreSync,schedules:schedSync,leads:leadSync,applicants:applicantSync,invoices:invoiceSync,payslips:payslipSync,visits:visitSync,meds:medRecSync,notes:noteSync,incidents:incidentSync,events:eventSync,bonuses:bonusSync,pto:ptoSync,bgChecks:bgCheckSync,sigDocs:sigDocSync,compliance:complianceSync,billingPeriods:billingPeriodSync,rateCards:rateCardSync,payCards:payCardSync,expenses:expenseSync,familyMsgs:familyMsgSync,serviceRequests:serviceReqSync,surveys:surveySync,careGoals:careGoalSync,vitals:vitalSync,campaigns:campaignSync,assignments:assignmentSync,notifications:notificationSync,moments:momentSync,trainingAssignments:trainingAssignSync,trainingProgress:tpSync};
   const cloudSummary=(()=>{
     const vals=Object.values(allStoreSyncs);
     if(vals.some(v=>v==="error"))return{label:"⚠️ Sync error",color:"#dc2626"};
