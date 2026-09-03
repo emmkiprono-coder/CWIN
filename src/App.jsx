@@ -3964,8 +3964,15 @@ export default function App(){
   const incidentSync=usePersistedStore("incidents_store",incidents,setIncidents,user);
   const eventSync=usePersistedStore("events_store",events,setEvents,user);
   const bonusSync=usePersistedStore("referral_bonuses_store",referralBonuses,setReferralBonuses,user);
+  const ptoSync=usePersistedStore("pto_requests_store",ptoRequests,setPtoRequests,user);
+  const bgCheckSync=usePersistedStore("bg_checks_store",bgChecks,setBgChecks,user);
+  const sigDocSync=usePersistedStore("signature_docs_store",signatureDocs,setSignatureDocs,user);
+  const complianceSync=usePersistedStore("compliance_store",compliance,setCompliance,user);
+  const billingPeriodSync=usePersistedStore("billing_periods_store",billingPeriods,setBillingPeriods,user);
+  const rateCardSync=usePersistedStore("rate_cards_store",rateCards,setRateCards,user);
+  const payCardSync=usePersistedStore("pay_cards_store",payCards,setPayCards,user);
   // Aggregate cloud status for the sidebar indicator
-  const allStoreSyncs={clients:clientSync,caregivers:cgSync,tasks:choreSync,schedules:schedSync,leads:leadSync,applicants:applicantSync,invoices:invoiceSync,payslips:payslipSync,visits:visitSync,meds:medRecSync,notes:noteSync,incidents:incidentSync,events:eventSync,bonuses:bonusSync};
+  const allStoreSyncs={clients:clientSync,caregivers:cgSync,tasks:choreSync,schedules:schedSync,leads:leadSync,applicants:applicantSync,invoices:invoiceSync,payslips:payslipSync,visits:visitSync,meds:medRecSync,notes:noteSync,incidents:incidentSync,events:eventSync,bonuses:bonusSync,pto:ptoSync,bgChecks:bgCheckSync,sigDocs:sigDocSync,compliance:complianceSync,billingPeriods:billingPeriodSync,rateCards:rateCardSync,payCards:payCardSync};
   const cloudSummary=(()=>{
     const vals=Object.values(allStoreSyncs);
     if(vals.some(v=>v==="error"))return{label:"⚠️ Sync error",color:"#dc2626"};
