@@ -3580,7 +3580,7 @@ function FamilyStandalonePortal({user,clients,caregivers,careNotes,events,family
 // ═══════════════════════════════════════════════════════════════════════
 // USER MANAGEMENT (Owner/Admin only)
 // ═══════════════════════════════════════════════════════════════════════
-function UserManagementPage({allUsers,setAllUsers}){
+function UserManagementPage({allUsers,setAllUsers,caregivers,clients}){
   const [showAdd,setShowAdd]=useState(false);
   const [f,sF]=useState({email:"",name:"",role:"caregiver",caregiverId:"",clientId:""});
   const [profiles,setProfiles]=useState(null); // real accounts, loaded from Supabase
@@ -3634,16 +3634,20 @@ function UserManagementPage({allUsers,setAllUsers}){
   const [editingId,setEditingId]=useState(null);
   const [editName,setEditName]=useState("");
   const [editEmail,setEditEmail]=useState("");
+  const [editCaregiverId,setEditCaregiverId]=useState("");
+  const [editClientId,setEditClientId]=useState("");
   const [editBusy,setEditBusy]=useState(false);
   const [editError,setEditError]=useState("");
 
-  const startEdit=(u)=>{setEditingId(u.id);setEditName(u.name||"");setEditEmail(u.email||"");setEditError("");};
+  const startEdit=(u)=>{setEditingId(u.id);setEditName(u.name||"");setEditEmail(u.email||"");setEditCaregiverId(u.caregiver_id||"");setEditClientId(u.client_id||"");setEditError("");};
   const cancelEdit=()=>{setEditingId(null);setEditError("");};
   const saveEdit=async(u)=>{
     const payload={targetId:u.id};
     if(editName!==u.name)payload.name=editName;
     if(editEmail!==u.email)payload.email=editEmail;
-    if(!payload.name&&!payload.email){setEditingId(null);return;}
+    if(editCaregiverId!==(u.caregiver_id||""))payload.caregiverId=editCaregiverId||null;
+    if(editClientId!==(u.client_id||""))payload.clientId=editClientId||null;
+    if(Object.keys(payload).length===1){setEditingId(null);return;} // only targetId — nothing changed
     setEditBusy(true);setEditError("");
     try{
       const r=await fetch("/api/update-user",{
@@ -3706,8 +3710,8 @@ function UserManagementPage({allUsers,setAllUsers}){
         <div className="fi"><label>Full Name</label><input value={f.name} onChange={e=>sF({...f,name:e.target.value})} placeholder="Jane Smith"/></div>
         <div className="fi"><label>Email</label><input type="email" value={f.email} onChange={e=>sF({...f,email:e.target.value})} placeholder="jane@example.com"/></div>
         <div className="fi"><label>Role</label><select value={f.role} onChange={e=>sF({...f,role:e.target.value})}>{Object.entries(ROLES).map(([k,r])=> <option key={k} value={k}>{r.label}</option>)}</select></div>
-        {f.role==="caregiver"&&<div className="fi"><label>Caregiver ID (optional)</label><input value={f.caregiverId} onChange={e=>sF({...f,caregiverId:e.target.value})} placeholder="e.g. CG1"/></div>}
-        {(f.role==="client"||f.role==="family")&&<div className="fi"><label>Client ID (optional)</label><input value={f.clientId} onChange={e=>sF({...f,clientId:e.target.value})} placeholder="e.g. CL1"/></div>}
+        {f.role==="caregiver"&&<div className="fi"><label>Which Caregiver? (optional)</label><select value={f.caregiverId} onChange={e=>sF({...f,caregiverId:e.target.value})}><option value="">— Not linked yet —</option>{(caregivers||[]).map(cg=> <option key={cg.id} value={cg.id}>{cg.name}</option>)}</select></div>}
+        {(f.role==="client"||f.role==="family")&&<div className="fi"><label>Which Client? (optional)</label><select value={f.clientId} onChange={e=>sF({...f,clientId:e.target.value})}><option value="">— Not linked yet —</option>{(clients||[]).map(cl=> <option key={cl.id} value={cl.id}>{cl.name}</option>)}</select></div>}
       </div>
       {createError&&<div className="login-err" style={{marginBottom:10}}>{createError}</div>}
       <div style={{display:"flex",gap:8}}><button className="btn btn-p" onClick={createUser} disabled={creating}>{creating?"Creating…":"Create Account"}</button><button className="btn btn-s" onClick={()=>{setShowAdd(false);setCreateError("");}}>Cancel</button></div>
@@ -3718,7 +3722,7 @@ function UserManagementPage({allUsers,setAllUsers}){
       {!loadingProfiles&&profiles===null&&<div style={{padding:20,fontSize:13,color:"var(--t2)"}}>Couldn't load accounts. Make sure Part 2 of the Supabase setup has been run.</div>}
       {!loadingProfiles&&profiles&&profiles.length===0&&<div style={{padding:20,fontSize:13,color:"var(--t2)"}}>No real accounts yet — click "+ Add User" to create the first one.</div>}
       {!loadingProfiles&&profiles&&profiles.length>0&&
-      <div className="tw"><table><thead><tr><th></th><th>Name</th><th>Email</th><th>Role</th><th>Created</th><th>Actions</th></tr></thead><tbody>
+      <div className="tw"><table><thead><tr><th></th><th>Name</th><th>Email</th><th>Role</th><th>Linked To</th><th>Created</th><th>Actions</th></tr></thead><tbody>
         {profiles.map(u=> <tr key={u.id}>
           <td><div className="avatar" style={{width:32,height:32,fontSize:10,background:ROLES[u.role]?.color||"#111",color:"#fff"}}>{(u.name||u.email||"?").split(" ").map(n=>n[0]).join("").slice(0,2).toUpperCase()}</div></td>
           {editingId===u.id? <>
@@ -3729,6 +3733,17 @@ function UserManagementPage({allUsers,setAllUsers}){
             <td style={{fontSize:11}}>{u.email}</td>
           </>}
           <td><select value={u.role} onChange={e=>changeRole(u.id,e.target.value)} style={{fontSize:11,padding:"3px 6px"}} disabled={editingId===u.id}>{Object.entries(ROLES).map(([k,r])=> <option key={k} value={k}>{r.label}</option>)}<option value="pending">Pending</option></select></td>
+          <td style={{fontSize:11}}>
+            {editingId===u.id? (
+              u.role==="caregiver"? <select value={editCaregiverId} onChange={e=>setEditCaregiverId(e.target.value)} style={{fontSize:11,padding:"3px 6px"}}><option value="">— None —</option>{(caregivers||[]).map(cg=> <option key={cg.id} value={cg.id}>{cg.name}</option>)}</select>
+              : (u.role==="client"||u.role==="family")? <select value={editClientId} onChange={e=>setEditClientId(e.target.value)} style={{fontSize:11,padding:"3px 6px"}}><option value="">— None —</option>{(clients||[]).map(cl=> <option key={cl.id} value={cl.id}>{cl.name}</option>)}</select>
+              : <span style={{color:"var(--t2)"}}>—</span>
+            ) : (
+              u.caregiver_id? (caregivers||[]).find(cg=>cg.id===u.caregiver_id)?.name||u.caregiver_id
+              : u.client_id? (clients||[]).find(cl=>cl.id===u.client_id)?.name||u.client_id
+              : <span style={{color:"var(--t2)"}}>—</span>
+            )}
+          </td>
           <td style={{fontSize:12,color:"var(--t2)"}}>{u.created_at?new Date(u.created_at).toLocaleDateString():"—"}</td>
           <td>
             {editingId===u.id? <div style={{display:"flex",gap:4,alignItems:"center"}}>
@@ -4220,7 +4235,7 @@ export default function App(){
       {pg==="portal"&&<ClientPortalPage clients={clients} caregivers={caregivers} notify={notify} assignments={assignments} sel={portalClient} setSel={setPortalClient} serviceRequests={serviceRequests} setServiceRequests={setServiceRequests} surveys={surveys} setSurveys={setSurveys} careGoals={careGoals} vitals={vitals} setVitals={setVitals} documents={documents} careNotes={careNotes} events={events} expenses={expenses} familyMsgs={familyMsgs} setFamilyMsgs={setFamilyMsgs} notifications={notifications} chores={chores} setChores={setChores} onReferCG={ap=>setCGApplicants(p=>[ap,...p])} onReferClient={ld=>setClientLeads(p=>[ld,...p])}/>}
       {pg==="family"&&<FamilyPage clients={clients} familyMsgs={familyMsgs} setFamilyMsgs={setFamilyMsgs} careNotes={careNotes} incidents={incidents} events={events} moments={moments} setMoments={setMoments} caregivers={caregivers} chores={chores} setChores={setChores} notify={notify}/>}
       {pg==="team"&&<TeamPage caregivers={caregivers} setCaregivers={setCaregivers} progress={trainingProgress} clients={clients} assignments={assignments} setAssignments={setAssignments} cgSync={cgSync}/>}
-      {pg==="users"&&<UserManagementPage allUsers={allUsers} setAllUsers={setAllUsers}/>}
+      {pg==="users"&&<UserManagementPage allUsers={allUsers} setAllUsers={setAllUsers} caregivers={caregivers} clients={clients}/>}
       {pg==="features"&&<FeatureManagementPage featureFlags={featureFlags} setFeatureFlags={setFeatureFlags} isFeatureEnabled={isFeatureEnabled} toggleFeature={toggleFeature} clients={clients} caregivers={caregivers} logAction={logAction}/>}
       {pg==="gps_map"&&<LiveGPSMapPage caregivers={caregivers} clients={clients} schedules={schedules} livePositions={livePositions} setLivePositions={setLivePositions} currentUser={user}/>}
       {pg==="shift_swap"&&<ShiftSwapPage swapRequests={swapRequests} setSwapRequests={setSwapRequests} caregivers={caregivers} clients={clients} schedules={schedules} setSchedules={setSchedules} notify={notify}/>}
@@ -7244,7 +7259,11 @@ function CaregiverFormModal({mode,initial,onClose,onSave}){
     setSsnBusy(false);
   };
 
-  const submit=()=>{
+  const [createLogin,setCreateLogin]=useState(true);
+  const [loginResult,setLoginResult]=useState(null); // {email,tempPassword} once created
+  const [loginErr,setLoginErr]=useState("");
+
+  const submit=async()=>{
     if(!f.name.trim())return;
     setSaving(true);
     const id=mode==="edit"?initial.id:"CG"+uid();
@@ -7252,7 +7271,25 @@ function CaregiverFormModal({mode,initial,onClose,onSave}){
       status:initial?.status||"active",archived:initial?.archived||false,
       photo:initial?.photo||null,trainingComplete:initial?.trainingComplete||0,trainingTotal:initial?.trainingTotal||TRAINING_MODULES.length};
     onSave(record,mode);
+
+    // ── Optionally create their login in the same step (add mode only) ──
+    if(mode==="add"&&createLogin&&f.email.trim()){
+      setLoginErr("");
+      try{
+        const r=await fetch("/api/create-user",{
+          method:"POST",
+          headers:{"Content-Type":"application/json",Authorization:"Bearer "+(sbSession?.access_token||"")},
+          body:JSON.stringify({email:f.email.trim(),role:"caregiver",name:f.name.trim(),caregiverId:id})
+        });
+        const d=await r.json();
+        if(!r.ok){setLoginErr(d.error||"Caregiver saved, but the login could not be created.");setSaving(false);return;}
+        setLoginResult({email:d.email,tempPassword:d.tempPassword});
+        setSaving(false);
+        return; // stay open to show the temp password
+      }catch(e){setLoginErr("Caregiver saved, but a network error stopped the login from being created.");setSaving(false);return;}
+    }
     setSaving(false);
+    onClose();
   };
 
   return <div className="modal-bg" onClick={onClose}>
@@ -7296,7 +7333,22 @@ function CaregiverFormModal({mode,initial,onClose,onSave}){
           <div style={{display:"flex",gap:4}}><select value={certInput} onChange={e=>setCertInput(e.target.value)}><option value="">Add cert...</option><option>CNA</option><option>HHA</option><option>CPR/BLS</option><option>First Aid</option><option>Dementia Care</option><option>Alzheimer's Care</option><option>Parkinson's Care</option><option>Wound Care</option><option>Medication Aide</option></select><button className="btn btn-sm btn-s" onClick={()=>{if(certInput){setF(p=>({...p,certs:[...(p.certs||[]),certInput]}));setCertInput("");}}}>Add</button></div>
         </div>
 
+        {mode==="add"&&<label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,marginBottom:12,cursor:"pointer"}}>
+          <input type="checkbox" checked={createLogin} onChange={e=>setCreateLogin(e.target.checked)}/>
+          Also create their login now (requires an email above) — you'll see a one-time password to hand them
+        </label>}
         <button className="btn btn-p" style={{width:"100%",marginBottom:18}} disabled={!f.name.trim()||saving} onClick={submit}>{saving?"Saving…":mode==="edit"?"Save Changes":"Add Caregiver"}</button>
+        {loginErr&&<div className="login-err" style={{marginBottom:14}}>{loginErr}</div>}
+        {loginResult&&<div style={{padding:"14px",background:"#f0fdf4",border:"1px solid #86efac",borderRadius:4,marginBottom:18}}>
+          <div style={{fontSize:12,fontWeight:700,color:"#166534",marginBottom:4}}>✅ Login created for {loginResult.email}</div>
+          <div style={{fontSize:10,textTransform:"uppercase",letterSpacing:1,color:"#166534",marginTop:8,marginBottom:2}}>Temporary Password</div>
+          <div style={{fontFamily:"monospace",fontSize:16,fontWeight:700,letterSpacing:1,marginBottom:8}}>{loginResult.tempPassword}</div>
+          <div style={{display:"flex",gap:6}}>
+            <button className="btn btn-sm btn-s" onClick={()=>{navigator.clipboard?.writeText(loginResult.tempPassword);alert("Password copied!");}}>📋 Copy Password</button>
+            <button className="btn btn-sm btn-p" onClick={onClose}>Done</button>
+          </div>
+          <div style={{fontSize:10,color:"#166534",marginTop:8,lineHeight:1.5}}>⚠️ Shown only once — share it directly (text or call), not email. They'll be asked to set their own password on first sign-in.</div>
+        </div>}
 
         {/* ═══ SSN — separate, locked-down section (owner/admin only, encrypted at rest) ═══ */}
         {mode==="edit"&&<div style={{padding:"14px",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:4}}>
@@ -7315,7 +7367,7 @@ function CaregiverFormModal({mode,initial,onClose,onSave}){
           </div>
           {ssnErr&&<div className="login-err" style={{marginTop:8}}>{ssnErr}</div>}
         </div>}
-        {mode==="add"&&<div style={{padding:"12px 14px",background:"var(--bg)",fontSize:11,color:"var(--t2)"}}>Save this caregiver first — then reopen Edit to add their SSN securely.</div>}
+        {mode==="add"&&!loginResult&&<div style={{padding:"12px 14px",background:"var(--bg)",fontSize:11,color:"var(--t2)"}}>To add their SSN securely, save this caregiver first — then reopen Edit.</div>}
       </div>
     </div>
   </div>;
@@ -7361,7 +7413,9 @@ function TeamPage({caregivers,setCaregivers,progress,clients,assignments,setAssi
     {cgFormMode&&<CaregiverFormModal mode={cgFormMode} initial={cgFormInitial} onClose={()=>{setCgFormMode(null);setCgFormInitial(null);}} onSave={(record,mode)=>{
       if(mode==="edit")setCaregivers(p=>p.map(c=>c.id===record.id?record:c));
       else setCaregivers(p=>[...p,record]);
-      setCgFormMode(null);setCgFormInitial(null);
+      // Modal closes itself (via onClose) once it's fully done -- this lets
+      // it stay open just long enough to show a newly-created login's
+      // one-time temporary password before the user dismisses it.
     }}/>}
 
     {/* ═══ CLOUD SAVE SETUP MODAL (caregivers) ═══ */}
